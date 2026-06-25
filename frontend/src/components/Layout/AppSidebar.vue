@@ -11,6 +11,7 @@ const auth = useAuthStore()
 
 const menuOptions: MenuOption[] = [
   { label: 'Проекты', key: '/projects', icon: () => h('span', { class: 'text-slate-400 text-sm' }, '◫') },
+  { label: 'Сотрудники', key: '/employees', icon: () => h('span', { class: 'text-slate-400 text-sm' }, '👥') },
 ]
 
 const activeKey = computed(() => '/' + route.path.split('/')[1])

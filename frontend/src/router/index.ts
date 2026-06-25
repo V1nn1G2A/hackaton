@@ -8,6 +8,7 @@ const router = createRouter({
     { path: '/login', name: 'Login', component: () => import('@/pages/LoginPage.vue'), meta: { guest: true } },
     { path: '/register', name: 'Register', component: () => import('@/pages/RegisterPage.vue'), meta: { guest: true } },
 
+    { path: '/employees', name: 'Employees', component: () => import('@/pages/EmployeesPage.vue'), meta: { auth: true } },
     { path: '/projects', name: 'Projects', component: () => import('@/pages/ProjectsPage.vue'), meta: { auth: true } },
     { path: '/projects/new', name: 'ProjectNew', component: () => import('@/pages/ProjectDetailPage.vue'), meta: { auth: true } },
     {
