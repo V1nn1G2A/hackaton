@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { NCard, NTag, NText, NSpace, NSelect, NSpin, NAlert, NBadge } from 'naive-ui'
+import { NTag, NText, NSelect, NSpin, NAlert } from 'naive-ui'
 import { useTasksStore } from '@/stores/tasks.store'
 import { mockUsers } from '@/api/mocks'
 import type { Task, TaskStatus, TaskType } from '@/types'
@@ -10,22 +10,24 @@ const route = useRoute()
 const store = useTasksStore()
 const sprintId = route.params.sprintId as string
 
-const columns: { key: TaskStatus; label: string; color: string }[] = [
-  { key: 'todo', label: 'Todo', color: '#6b7280' },
-  { key: 'in_progress', label: 'In Progress', color: '#0ea5e9' },
-  { key: 'review', label: 'Review', color: '#f59e0b' },
-  { key: 'done', label: 'Done', color: '#10b981' },
-  { key: 'blocked', label: 'Blocked', color: '#ef4444' },
+const columns: { key: TaskStatus; label: string; dot: string }[] = [
+  { key: 'todo',        label: 'Todo',        dot: '#64748b' },
+  { key: 'in_progress', label: 'In Progress', dot: '#38bdf8' },
+  { key: 'review',      label: 'Review',      dot: '#fbbf24' },
+  { key: 'done',        label: 'Done',        dot: '#34d399' },
+  { key: 'blocked',     label: 'Blocked',     dot: '#f87171' },
 ]
 
 const typeColors: Record<TaskType, string> = {
-  frontend: '#4f46e5', backend: '#0ea5e9', qa: '#10b981', devops: '#f59e0b',
-  analytics: '#8b5cf6', techwriter: '#ec4899', project: '#14b8a6', other: '#6b7280',
+  frontend:   '#4f7cff', backend:    '#38bdf8', qa:         '#34d399',
+  devops:     '#fbbf24', analytics:  '#a78bfa', techwriter: '#f472b6',
+  project:    '#2dd4bf', other:      '#64748b',
 }
 
 const filterType = ref<TaskType[]>([])
 const filterAssignee = ref<string | null>(null)
-const typeOptions = ['frontend','backend','qa','devops','analytics','techwriter','project','other'].map(v => ({ label: v, value: v }))
+const typeOptions = (['frontend','backend','qa','devops','analytics','techwriter','project','other'] as TaskType[])
+  .map(v => ({ label: v, value: v }))
 const userOptions = mockUsers.map(u => ({ label: `${u.firstName} ${u.lastName}`, value: u.id }))
 
 function getUser(id?: string) {
@@ -46,12 +48,20 @@ function colTasks(status: TaskStatus) {
   return list
 }
 
+// Drag & drop
 let dragId = ''
+const dropTarget = ref<TaskStatus | null>(null)
+
 function onDragStart(id: string) { dragId = id }
+function onDragEnter(col: TaskStatus) { dropTarget.value = col }
+function onDragLeave() { dropTarget.value = null }
 function onDrop(status: TaskStatus) {
   if (dragId) store.updateStatus(dragId, status)
   dragId = ''
+  dropTarget.value = null
 }
+
+const isBlocked = (t: Task) => t.status === 'blocked'
 
 onMounted(() => store.fetchBySprint(sprintId))
 </script>
@@ -60,97 +70,78 @@ onMounted(() => store.fetchBySprint(sprintId))
   <NSpin v-if="store.loading" />
   <NAlert v-else-if="store.error" type="error" :title="store.error" />
   <template v-else>
-    <NSpace style="margin-bottom: 12px">
-      <NSelect v-model:value="filterType" :options="typeOptions" placeholder="Тип" multiple clearable style="min-width: 160px" />
-      <NSelect v-model:value="filterAssignee" :options="userOptions" placeholder="Исполнитель" clearable style="min-width: 160px" />
-    </NSpace>
+    <!-- Filters -->
+    <div class="flex gap-3 mb-4 flex-wrap">
+      <NSelect v-model:value="filterType" :options="typeOptions"
+               placeholder="Тип" multiple clearable size="small" style="min-width:160px" />
+      <NSelect v-model:value="filterAssignee" :options="userOptions"
+               placeholder="Исполнитель" clearable size="small" style="min-width:160px" />
+    </div>
 
-    <div class="kanban-board">
+    <!-- Board -->
+    <div class="flex gap-3 overflow-x-auto pb-2" style="min-height: 480px">
       <div
         v-for="col in columns"
         :key="col.key"
-        class="kanban-col"
+        class="flex flex-col rounded-xl border border-edge bg-panel/40 p-3 transition-all"
+        :class="{ 'drop-active': dropTarget === col.key }"
+        style="min-width: 210px; flex: 1"
         @dragover.prevent
+        @dragenter.prevent="onDragEnter(col.key)"
+        @dragleave="onDragLeave"
         @drop="onDrop(col.key)"
       >
-        <div class="col-header">
-          <span class="col-dot" :style="{ background: col.color }" />
-          <NText strong>{{ col.label }}</NText>
-          <NBadge :value="colTasks(col.key).length" :max="99" style="margin-left: auto" />
+        <!-- Column header -->
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-2 h-2 rounded-full flex-shrink-0" :style="{ background: col.dot }" />
+          <span class="text-xs font-medium text-slate-300">{{ col.label }}</span>
+          <span class="ml-auto text-[10px] text-slate-500 bg-ink rounded px-1.5 py-0.5">
+            {{ colTasks(col.key).length }}
+          </span>
         </div>
-        <div class="col-cards">
-          <NCard
+
+        <!-- Cards -->
+        <div class="flex flex-col gap-2 flex-1">
+          <!-- Empty drop zone -->
+          <div v-if="!colTasks(col.key).length"
+               class="grid place-items-center rounded-lg border border-dashed border-edge py-6 text-xs text-slate-600 flex-1">
+            drop here
+          </div>
+
+          <div
             v-for="task in colTasks(col.key)"
             :key="task.id"
-            size="small"
-            class="task-card"
+            class="rounded-lg border bg-ink p-3 cursor-grab active:cursor-grabbing transition-colors"
+            :class="isBlocked(task)
+              ? 'border-red-500/60 hover:border-red-500/80'
+              : 'border-edge hover:border-slate-500'"
             draggable="true"
             @dragstart="onDragStart(task.id)"
           >
-            <NText style="font-size: 0.875rem; display: block; margin-bottom: 6px">{{ task.title }}</NText>
-            <NSpace size="small">
-              <NTag size="tiny" :style="{ background: typeColors[task.type], color: '#fff', border: 'none' }">{{ task.type }}</NTag>
-              <NText v-if="getUser(task.assigneeId)" depth="3" style="font-size: 0.75rem">
+            <p class="text-sm font-medium text-slate-200 mb-2 leading-tight">
+              {{ task.title }}
+            </p>
+            <div class="flex items-center justify-between">
+              <NTag size="tiny" :bordered="false"
+                    :style="{ background: typeColors[task.type] + '22', color: typeColors[task.type], fontSize: '10px' }">
+                {{ task.type }}
+              </NTag>
+              <span v-if="getUser(task.assigneeId)" class="text-[10px] text-slate-500">
                 {{ getUser(task.assigneeId)?.firstName }}
-              </NText>
-            </NSpace>
-          </NCard>
-          <div v-if="!colTasks(col.key).length" class="col-empty">пусто</div>
+              </span>
+            </div>
+            <div v-if="task.estimatedHours" class="mt-2">
+              <div class="flex justify-between text-[10px] text-slate-500 mb-1">
+                <span>{{ task.actualHours ?? 0 }}h / {{ task.estimatedHours }}h</span>
+              </div>
+              <div class="h-1.5 overflow-hidden rounded-full bg-edge">
+                <div class="h-full rounded-full bg-sky-400 transition-all"
+                     :style="{ width: Math.min(100, ((task.actualHours ?? 0) / task.estimatedHours) * 100) + '%' }" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </template>
 </template>
-
-<style scoped>
-.kanban-board {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 12px;
-  min-height: 400px;
-}
-
-.kanban-col {
-  min-width: 220px;
-  flex: 1;
-  background: #18181c;
-  border-radius: 10px;
-  padding: 12px;
-  border: 1px solid #2a2a30;
-}
-
-.col-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.col-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.col-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.task-card {
-  cursor: grab;
-  background: #1e1e24 !important;
-  border-color: #2a2a30 !important;
-}
-.task-card:active { cursor: grabbing; }
-
-.col-empty {
-  text-align: center;
-  padding: 20px;
-  color: #4a4a55;
-  font-size: 0.85rem;
-}
-</style>

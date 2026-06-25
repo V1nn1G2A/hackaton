@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { NButton, NSpace, NCard, NText, NSpin, NAlert } from 'naive-ui'
+import { NButton, NSpin, NAlert } from 'naive-ui'
 import { apiClient } from '@/api/client'
 
 const route = useRoute()
@@ -45,44 +45,60 @@ async function fetchRisks() {
 
 <template>
   <div>
-    <NText strong style="font-size: 1.1rem; display: block; margin-bottom: 20px">✨ AI Анализ спринта</NText>
+    <h2 class="text-xl font-semibold text-slate-200 mb-1">AI Анализ</h2>
+    <p class="text-xs text-slate-500 mb-5">Claude анализирует данные текущего спринта</p>
 
-    <NSpace :size="16" style="flex-wrap: wrap">
+    <div class="grid gap-4 sm:grid-cols-2">
+
       <!-- Summary -->
-      <NCard title="Саммари спринта" style="min-width: 340px; flex: 1">
-        <template #header-extra>
+      <div class="rounded-xl border border-edge bg-panel/50 p-4">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="text-sm font-medium text-slate-300">✦ Саммари спринта</p>
+            <p class="text-xs text-slate-500 mt-0.5">Прогресс и ключевые события</p>
+          </div>
           <NButton type="primary" size="small" :loading="summaryState === 'loading'" @click="fetchSummary">
             Сгенерировать
           </NButton>
-        </template>
+        </div>
 
         <NSpin v-if="summaryState === 'loading'" />
         <NAlert v-else-if="summaryState === 'error'" type="error" :title="summaryError" />
-        <NText v-else-if="summaryState === 'success'" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.7">
+        <div v-else-if="summaryState === 'success'"
+             class="rounded-lg bg-ink border border-edge p-3 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
           {{ summaryText }}
-        </NText>
-        <NText v-else depth="3" style="font-size: 0.875rem">
-          Нажмите кнопку — Claude проанализирует прогресс спринта и предоставит краткое резюме.
-        </NText>
-      </NCard>
+        </div>
+        <div v-else
+             class="grid place-items-center rounded-lg border border-dashed border-edge py-8 text-xs text-slate-600">
+          Нажмите кнопку для генерации
+        </div>
+      </div>
 
       <!-- Risks -->
-      <NCard title="Анализ рисков" style="min-width: 340px; flex: 1">
-        <template #header-extra>
-          <NButton type="warning" size="small" :loading="risksState === 'loading'" @click="fetchRisks">
+      <div class="rounded-xl border border-edge bg-panel/50 p-4">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="text-sm font-medium text-slate-300">⚠ Анализ рисков</p>
+            <p class="text-xs text-slate-500 mt-0.5">Узкие места и блокеры</p>
+          </div>
+          <NButton size="small" :loading="risksState === 'loading'" @click="fetchRisks"
+                   style="color: #fbbf24; border-color: #fbbf2440">
             Анализировать
           </NButton>
-        </template>
+        </div>
 
         <NSpin v-if="risksState === 'loading'" />
         <NAlert v-else-if="risksState === 'error'" type="error" :title="risksError" />
-        <NText v-else-if="risksState === 'success'" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.7">
+        <div v-else-if="risksState === 'success'"
+             class="rounded-lg bg-ink border border-edge p-3 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
           {{ risksText }}
-        </NText>
-        <NText v-else depth="3" style="font-size: 0.875rem">
-          Нажмите кнопку — Claude выявит риски и узкие места текущего спринта.
-        </NText>
-      </NCard>
-    </NSpace>
+        </div>
+        <div v-else
+             class="grid place-items-center rounded-lg border border-dashed border-edge py-8 text-xs text-slate-600">
+          Нажмите кнопку для анализа
+        </div>
+      </div>
+
+    </div>
   </div>
 </template>
