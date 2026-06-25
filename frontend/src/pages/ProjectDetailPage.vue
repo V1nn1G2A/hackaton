@@ -48,7 +48,7 @@ function goToSprint(row: Sprint) {
 }
 
 onMounted(async () => {
-  await Promise.all([projectStore.fetchOne(projectId), sprintStore.fetchByProject(projectId), projectStore.fetchMembers(projectId)])
+  await Promise.all([projectStore.fetchOne(projectId), sprintStore.fetchByProject(projectId), projectStore.fetchMembers(projectId), loadControlObjects()])
   const users = await projectStore.fetchAllUsers()
   allUsers.value = users.map(u => ({ label: `${u.firstName} ${u.lastName}`, value: u.id }))
 })
@@ -72,6 +72,18 @@ function initials(u: any) {
 }
 
 import { h } from 'vue'
+import { controlObjectsApi } from '@/api/controlObjects'
+
+const controlObjects = ref<any[]>([])
+const coLoading = ref(false)
+
+async function loadControlObjects() {
+  coLoading.value = true
+  try {
+    const { data } = await controlObjectsApi.getByProject(projectId)
+    controlObjects.value = data
+  } catch { } finally { coLoading.value = false }
+}
 </script>
 
 <template>
@@ -100,6 +112,30 @@ import { h } from 'vue'
             :row-props="(row) => ({ onClick: () => goToSprint(row), style: 'cursor:pointer' })"
           />
           <NEmpty v-if="!sprintStore.sprints.length && !sprintStore.loading" description="Нет спринтов" style="padding: 40px 0" />
+        </NTabPane>
+
+        <NTabPane name="control-objects" tab="Объекты контроля">
+          <NSpin v-if="coLoading" />
+          <NEmpty v-else-if="!controlObjects.length" description="Нет объектов контроля" style="padding: 40px 0" />
+          <div v-else style="display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+            <div
+              v-for="co in controlObjects"
+              :key="co.id"
+              style="border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); padding: 16px; cursor: pointer; transition: border-color 0.15s;"
+              @mouseenter="($event.currentTarget as HTMLElement).style.borderColor = 'rgba(79,124,255,0.4)'"
+              @mouseleave="($event.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)'"
+              @click="router.push(`/control-objects/${co.id}`)"
+            >
+              <div style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">{{ co.name }}</div>
+              <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
+                {{ co.type ?? 'Объект' }} · {{ co.startDate ?? '' }} — {{ co.plannedEndDate ?? '' }}
+              </div>
+              <NButton size="small" type="primary" style="width: 100%;"
+                @click.stop="router.push(`/control-objects/${co.id}`)">
+                Открыть Dashboard →
+              </NButton>
+            </div>
+          </div>
         </NTabPane>
 
         <NTabPane name="members" tab="Участники">

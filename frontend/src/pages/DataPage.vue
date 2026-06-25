@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   NTabs, NTabPane, NButton, NDataTable, NUpload, NUploadDragger,
   NText, NSpin, NAlert, NTag, NSpace, NCard, NGrid, NGridItem,
-  useMessage, NInput, NSelect,
+  useMessage, NInput, NSelect, NModal, NForm, NFormItem, NSwitch,
 } from 'naive-ui'
 import { controlObjectsApi } from '@/api/controlObjects'
 import { employeesApi } from '@/api/employees'
@@ -177,6 +177,54 @@ async function importEmployees({ file }: any) {
   } finally { empImporting.value = false }
 }
 
+// Редактирование сотрудника
+const editModal = ref(false)
+const editTarget = ref<any>(null)
+const editForm = ref({ direction: '', role: '', active: true })
+const editSaving = ref(false)
+
+const directionOptions = [
+  { label: 'Бэкенд', value: 'backend' },
+  { label: 'Фронтенд', value: 'frontend' },
+  { label: 'Аналитика', value: 'analytics' },
+  { label: 'Тимлид', value: 'teamlead' },
+  { label: 'QA', value: 'qa' },
+  { label: 'DevOps', value: 'devops' },
+  { label: 'Дизайнер', value: 'design' },
+  { label: 'Прочее', value: 'other' },
+]
+
+const roleOptions = [
+  { label: 'Бэкенд-разработчик', value: 'backend_dev' },
+  { label: 'Фронтенд-разработчик', value: 'frontend_dev' },
+  { label: 'Аналитик', value: 'analyst' },
+  { label: 'Техписатель', value: 'techwriter' },
+  { label: 'QA', value: 'qa' },
+  { label: 'DevOps', value: 'devops' },
+  { label: 'Дизайнер', value: 'designer' },
+  { label: 'Тимлид', value: 'teamlead' },
+  { label: 'Прочее', value: 'other' },
+]
+
+function openEdit(emp: any) {
+  editTarget.value = emp
+  editForm.value = { direction: emp.direction ?? '', role: emp.role ?? '', active: emp.active ?? true }
+  editModal.value = true
+}
+
+async function saveEdit() {
+  if (!editTarget.value) return
+  editSaving.value = true
+  try {
+    await employeesApi.update(editTarget.value.id, editForm.value)
+    message.success('Сотрудник обновлён')
+    editModal.value = false
+    await loadEmployees()
+  } catch (e: any) {
+    message.error(e.response?.data?.message ?? 'Ошибка сохранения')
+  } finally { editSaving.value = false }
+}
+
 const filteredEmployees = computed(() => {
   if (!empSearch.value) return employees.value
   const s = empSearch.value.toLowerCase()
@@ -190,44 +238,66 @@ const filteredEmployees = computed(() => {
 const empColumns = [
   { title: 'ФИО', key: 'fullName', sorter: 'default' },
   { title: 'Jira логин', key: 'jiraIdentity', render: (r: any) => r.jiraIdentity ?? '—' },
-  { title: 'Email', key: 'mail', render: (r: any) => r.mail ?? '—' },
   { title: 'Направление', key: 'direction', render: (r: any) => h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => r.direction ?? '—' }) },
   { title: 'Роль', key: 'role', render: (r: any) => h(NTag, { size: 'small', type: 'success', bordered: false }, { default: () => r.role ?? '—' }) },
   {
-    title: 'Статус', key: 'active', width: 100,
-    render: (r: any) => h(NTag, { size: 'small', type: r.active ? 'success' : 'default', bordered: false }, { default: () => r.active ? 'Активен' : 'Неактивен' }),
+    title: 'Статус', key: 'active', width: 90,
+    render: (r: any) => h(NTag, { size: 'small', type: r.active ? 'success' : 'default', bordered: false }, { default: () => r.active ? 'Активен' : 'Неакт.' }),
   },
   {
-    title: 'Проверка', key: 'needsReview', width: 100,
-    render: (r: any) => r.needsReview ? h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => '⚠ Проверить' }) : null,
+    title: 'Проверка', key: 'needsReview', width: 90,
+    render: (r: any) => r.needsReview ? h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => '⚠' }) : null,
+  },
+  {
+    title: '', key: 'actions', width: 80,
+    render: (r: any) => h(NButton, { size: 'tiny', onClick: () => openEdit(r) }, { default: () => 'Изменить' }),
   },
 ]
 
 // ── Links ─────────────────────────────────────────────────────────────────────
+// selectedEpic[etId] = epicId выбранный в селекте для этой строки
+const selectedEpic = ref<Record<string, string>>({})
+const linkingId = ref<string | null>(null)
+const unlinkingKey = ref<string | null>(null) // `${etId}:${epicId}`
+
 const linksData = computed(() => {
-  const linked = estimateTasks.value.map(et => {
+  return estimateTasks.value.map(et => {
     const linkedEpics = epics.value.filter(e => e.estimateTaskId === et.id)
     return { ...et, linkedEpics, linkedEpicCount: linkedEpics.length }
   })
-  return linked
 })
 
-const linkColumns = [
-  { title: 'EstimateTask', key: 'title', ellipsis: true },
-  { title: 'Plan (ч)', key: 'totalHours', width: 100 },
-  {
-    title: 'Jira Epic', key: 'linkedEpics', ellipsis: true,
-    render: (r: any) => r.linkedEpics?.length
-      ? r.linkedEpics.map((e: any) => h(NTag, { size: 'small', type: 'success', bordered: false, style: 'margin-right:4px' }, { default: () => e.jiraKey }))
-      : h(NTag, { size: 'small', type: 'error', bordered: false }, { default: () => 'Нет связи' }),
-  },
-  {
-    title: 'Статус связи', key: 'linkStatus', width: 120,
-    render: (r: any) => r.linkedEpicCount > 0
-      ? h(NTag, { type: 'success', size: 'small', bordered: false }, { default: () => 'Связан' })
-      : h(NTag, { type: 'error', size: 'small', bordered: false }, { default: () => 'Не связан' }),
-  },
-]
+// Эпики без связи — доступны для выбора в селекте
+const freeEpicsOptions = computed(() =>
+  epics.value
+    .filter(e => !e.estimateTaskId)
+    .map(e => ({ label: `${e.jiraKey}: ${e.title ?? ''}`, value: e.id }))
+)
+
+async function manualLink(etId: string) {
+  const epicId = selectedEpic.value[etId]
+  if (!epicId) { message.warning('Выберите Epic'); return }
+  linkingId.value = etId
+  try {
+    await controlObjectsApi.linkEpic(etId, epicId)
+    message.success('Связка установлена')
+    selectedEpic.value[etId] = ''
+    await Promise.all([loadBaseline(), loadJira()])
+  } catch (e: any) {
+    message.error(e.response?.data?.message ?? 'Ошибка привязки')
+  } finally { linkingId.value = null }
+}
+
+async function manualUnlink(etId: string, epicId: string) {
+  unlinkingKey.value = `${etId}:${epicId}`
+  try {
+    await controlObjectsApi.unlinkEpic(etId, epicId)
+    message.success('Связка удалена')
+    await Promise.all([loadBaseline(), loadJira()])
+  } catch (e: any) {
+    message.error(e.response?.data?.message ?? 'Ошибка удаления связки')
+  } finally { unlinkingKey.value = null }
+}
 
 // ── Review ────────────────────────────────────────────────────────────────────
 const dataQuality = ref<any>(null)
@@ -474,27 +544,73 @@ onMounted(async () => {
           Сначала загрузите Baseline и Jira
         </NAlert>
 
-        <NDataTable v-if="estimateTasks.length" :columns="linkColumns" :data="linksData"
-          size="small" :pagination="{ pageSize: 20 }" />
+        <NAlert v-if="!estimateTasks.length" type="info" style="margin-bottom: 16px;">
+          Сначала загрузите Baseline и Jira
+        </NAlert>
 
-        <!-- Unlinked lists -->
-        <div v-if="estimateTasks.filter(e => !e.linkedEpicCount).length" style="margin-top: 20px;">
-          <div style="font-weight: 600; color: #f59e0b; font-size: 13px; margin-bottom: 8px;">
-            ⚠ EstimateTask без Epic ({{ estimateTasks.filter(e => !e.linkedEpicCount).length }})
-          </div>
-          <div v-for="et in estimateTasks.filter(e => !e.linkedEpicCount)" :key="et.id"
-            style="font-size: 12px; color: #94a3b8; padding: 4px 0;">
-            · {{ et.title }}
-          </div>
-        </div>
+        <!-- Карточки EstimateTask с привязкой -->
+        <div v-for="et in linksData" :key="et.id"
+          style="margin-bottom: 10px; padding: 14px 16px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
 
-        <div v-if="epics.filter(e => !e.estimateTaskId).length" style="margin-top: 16px;">
-          <div style="font-weight: 600; color: #f59e0b; font-size: 13px; margin-bottom: 8px;">
-            ⚠ Jira Epic без EstimateTask ({{ epics.filter(e => !e.estimateTaskId).length }})
+          <!-- Заголовок строки -->
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                {{ et.title }}
+              </div>
+              <div style="font-size: 12px; color: #64748b;">
+                Plan: {{ et.totalHours ?? '—' }} ч
+              </div>
+            </div>
+            <NTag
+              :type="et.linkedEpicCount > 0 ? 'success' : 'error'"
+              size="small"
+              :bordered="false"
+              style="flex-shrink: 0;"
+            >
+              {{ et.linkedEpicCount > 0 ? `✓ ${et.linkedEpicCount} Epic` : 'Не связан' }}
+            </NTag>
           </div>
-          <div v-for="e in epics.filter(ep => !ep.estimateTaskId)" :key="e.id"
-            style="font-size: 12px; color: #94a3b8; padding: 4px 0;">
-            · {{ e.jiraKey }}: {{ e.title }}
+
+          <!-- Привязанные эпики -->
+          <div v-if="et.linkedEpics.length" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;">
+            <div v-for="epic in et.linkedEpics" :key="epic.id"
+              style="display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 10px; border-radius: 6px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);">
+              <span style="font-size: 12px; color: #22c55e; font-weight: 500;">{{ epic.jiraKey }}</span>
+              <span style="font-size: 12px; color: #94a3b8; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ epic.title }}</span>
+              <NTag size="tiny" :bordered="false" style="background: rgba(255,255,255,0.05); font-size: 10px; color: #475569;">
+                {{ epic.linkSource === 'auto' ? 'авто' : 'вручную' }}
+              </NTag>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="unlinkingKey === `${et.id}:${epic.id}`"
+                style="color: #ef4444; padding: 0 4px; min-width: 0;"
+                @click="manualUnlink(et.id, epic.id)"
+              >✕</NButton>
+            </div>
+          </div>
+
+          <!-- Форма добавления связки -->
+          <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
+            <NSelect
+              v-model:value="selectedEpic[et.id]"
+              :options="freeEpicsOptions"
+              placeholder="Выберите Jira Epic для привязки"
+              size="small"
+              clearable
+              filterable
+              style="flex: 1;"
+            />
+            <NButton
+              size="small"
+              type="primary"
+              :disabled="!selectedEpic[et.id]"
+              :loading="linkingId === et.id"
+              @click="manualLink(et.id)"
+            >
+              Связать
+            </NButton>
           </div>
         </div>
       </NTabPane>
@@ -519,5 +635,25 @@ onMounted(async () => {
       </NTabPane>
 
     </NTabs>
+
+    <!-- Edit Employee Modal -->
+    <NModal v-model:show="editModal" preset="card" title="Редактировать сотрудника" style="max-width: 420px;">
+      <NForm v-if="editTarget" label-placement="top">
+        <div style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">{{ editTarget.fullName }}</div>
+        <NFormItem label="Направление">
+          <NSelect v-model:value="editForm.direction" :options="directionOptions" />
+        </NFormItem>
+        <NFormItem label="Роль">
+          <NSelect v-model:value="editForm.role" :options="roleOptions" />
+        </NFormItem>
+        <NFormItem label="Активен">
+          <NSwitch v-model:value="editForm.active" />
+        </NFormItem>
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+          <NButton size="small" @click="editModal = false">Отмена</NButton>
+          <NButton size="small" type="primary" :loading="editSaving" @click="saveEdit">Сохранить</NButton>
+        </div>
+      </NForm>
+    </NModal>
   </div>
 </template>
