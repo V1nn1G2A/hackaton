@@ -204,30 +204,49 @@ const empColumns = [
 ]
 
 // ── Links ─────────────────────────────────────────────────────────────────────
+// selectedEpic[etId] = epicId выбранный в селекте для этой строки
+const selectedEpic = ref<Record<string, string>>({})
+const linkingId = ref<string | null>(null)
+const unlinkingKey = ref<string | null>(null) // `${etId}:${epicId}`
+
 const linksData = computed(() => {
-  const linked = estimateTasks.value.map(et => {
+  return estimateTasks.value.map(et => {
     const linkedEpics = epics.value.filter(e => e.estimateTaskId === et.id)
     return { ...et, linkedEpics, linkedEpicCount: linkedEpics.length }
   })
-  return linked
 })
 
-const linkColumns = [
-  { title: 'EstimateTask', key: 'title', ellipsis: true },
-  { title: 'Plan (ч)', key: 'totalHours', width: 100 },
-  {
-    title: 'Jira Epic', key: 'linkedEpics', ellipsis: true,
-    render: (r: any) => r.linkedEpics?.length
-      ? r.linkedEpics.map((e: any) => h(NTag, { size: 'small', type: 'success', bordered: false, style: 'margin-right:4px' }, { default: () => e.jiraKey }))
-      : h(NTag, { size: 'small', type: 'error', bordered: false }, { default: () => 'Нет связи' }),
-  },
-  {
-    title: 'Статус связи', key: 'linkStatus', width: 120,
-    render: (r: any) => r.linkedEpicCount > 0
-      ? h(NTag, { type: 'success', size: 'small', bordered: false }, { default: () => 'Связан' })
-      : h(NTag, { type: 'error', size: 'small', bordered: false }, { default: () => 'Не связан' }),
-  },
-]
+// Эпики без связи — доступны для выбора в селекте
+const freeEpicsOptions = computed(() =>
+  epics.value
+    .filter(e => !e.estimateTaskId)
+    .map(e => ({ label: `${e.jiraKey}: ${e.title ?? ''}`, value: e.id }))
+)
+
+async function manualLink(etId: string) {
+  const epicId = selectedEpic.value[etId]
+  if (!epicId) { message.warning('Выберите Epic'); return }
+  linkingId.value = etId
+  try {
+    await controlObjectsApi.linkEpic(etId, epicId)
+    message.success('Связка установлена')
+    selectedEpic.value[etId] = ''
+    await Promise.all([loadBaseline(), loadJira()])
+  } catch (e: any) {
+    message.error(e.response?.data?.message ?? 'Ошибка привязки')
+  } finally { linkingId.value = null }
+}
+
+async function manualUnlink(etId: string, epicId: string) {
+  unlinkingKey.value = `${etId}:${epicId}`
+  try {
+    await controlObjectsApi.unlinkEpic(etId, epicId)
+    message.success('Связка удалена')
+    await Promise.all([loadBaseline(), loadJira()])
+  } catch (e: any) {
+    message.error(e.response?.data?.message ?? 'Ошибка удаления связки')
+  } finally { unlinkingKey.value = null }
+}
 
 // ── Review ────────────────────────────────────────────────────────────────────
 const dataQuality = ref<any>(null)
@@ -474,27 +493,73 @@ onMounted(async () => {
           Сначала загрузите Baseline и Jira
         </NAlert>
 
-        <NDataTable v-if="estimateTasks.length" :columns="linkColumns" :data="linksData"
-          size="small" :pagination="{ pageSize: 20 }" />
+        <NAlert v-if="!estimateTasks.length" type="info" style="margin-bottom: 16px;">
+          Сначала загрузите Baseline и Jira
+        </NAlert>
 
-        <!-- Unlinked lists -->
-        <div v-if="estimateTasks.filter(e => !e.linkedEpicCount).length" style="margin-top: 20px;">
-          <div style="font-weight: 600; color: #f59e0b; font-size: 13px; margin-bottom: 8px;">
-            ⚠ EstimateTask без Epic ({{ estimateTasks.filter(e => !e.linkedEpicCount).length }})
-          </div>
-          <div v-for="et in estimateTasks.filter(e => !e.linkedEpicCount)" :key="et.id"
-            style="font-size: 12px; color: #94a3b8; padding: 4px 0;">
-            · {{ et.title }}
-          </div>
-        </div>
+        <!-- Карточки EstimateTask с привязкой -->
+        <div v-for="et in linksData" :key="et.id"
+          style="margin-bottom: 10px; padding: 14px 16px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
 
-        <div v-if="epics.filter(e => !e.estimateTaskId).length" style="margin-top: 16px;">
-          <div style="font-weight: 600; color: #f59e0b; font-size: 13px; margin-bottom: 8px;">
-            ⚠ Jira Epic без EstimateTask ({{ epics.filter(e => !e.estimateTaskId).length }})
+          <!-- Заголовок строки -->
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                {{ et.title }}
+              </div>
+              <div style="font-size: 12px; color: #64748b;">
+                Plan: {{ et.totalHours ?? '—' }} ч
+              </div>
+            </div>
+            <NTag
+              :type="et.linkedEpicCount > 0 ? 'success' : 'error'"
+              size="small"
+              :bordered="false"
+              style="flex-shrink: 0;"
+            >
+              {{ et.linkedEpicCount > 0 ? `✓ ${et.linkedEpicCount} Epic` : 'Не связан' }}
+            </NTag>
           </div>
-          <div v-for="e in epics.filter(ep => !ep.estimateTaskId)" :key="e.id"
-            style="font-size: 12px; color: #94a3b8; padding: 4px 0;">
-            · {{ e.jiraKey }}: {{ e.title }}
+
+          <!-- Привязанные эпики -->
+          <div v-if="et.linkedEpics.length" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;">
+            <div v-for="epic in et.linkedEpics" :key="epic.id"
+              style="display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 10px; border-radius: 6px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);">
+              <span style="font-size: 12px; color: #22c55e; font-weight: 500;">{{ epic.jiraKey }}</span>
+              <span style="font-size: 12px; color: #94a3b8; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ epic.title }}</span>
+              <NTag size="tiny" :bordered="false" style="background: rgba(255,255,255,0.05); font-size: 10px; color: #475569;">
+                {{ epic.linkSource === 'auto' ? 'авто' : 'вручную' }}
+              </NTag>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="unlinkingKey === `${et.id}:${epic.id}`"
+                style="color: #ef4444; padding: 0 4px; min-width: 0;"
+                @click="manualUnlink(et.id, epic.id)"
+              >✕</NButton>
+            </div>
+          </div>
+
+          <!-- Форма добавления связки -->
+          <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
+            <NSelect
+              v-model:value="selectedEpic[et.id]"
+              :options="freeEpicsOptions"
+              placeholder="Выберите Jira Epic для привязки"
+              size="small"
+              clearable
+              filterable
+              style="flex: 1;"
+            />
+            <NButton
+              size="small"
+              type="primary"
+              :disabled="!selectedEpic[et.id]"
+              :loading="linkingId === et.id"
+              @click="manualLink(et.id)"
+            >
+              Связать
+            </NButton>
           </div>
         </div>
       </NTabPane>
