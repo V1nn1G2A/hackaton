@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  BadRequestException,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -37,6 +38,7 @@ export class EmployeesController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   import(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Нужен файл сотрудников в поле file');
     return this.service.import(file);
   }
 

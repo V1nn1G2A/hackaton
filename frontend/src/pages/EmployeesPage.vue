@@ -79,7 +79,7 @@ const filteredEmployees = computed(() => {
 })
 
 const columns = [
-  { title: 'ФИО', key: 'fullName', sorter: 'default', ellipsis: true },
+  { title: 'ФИО', key: 'fullName', sorter: 'default' as const, ellipsis: true },
   { title: 'Логин (Jira)', key: 'jiraIdentity', width: 140, render: (r: any) => r.jiraIdentity ?? '—' },
   { title: 'Email', key: 'mail', ellipsis: true, render: (r: any) => r.mail ?? '—' },
   {

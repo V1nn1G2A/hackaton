@@ -20,9 +20,7 @@ export const controlObjectsApi = {
   importBaseline: (id: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return apiClient.post(`/control-objects/${id}/baseline/import`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    return apiClient.post(`/control-objects/${id}/baseline/import`, form)
   },
 
   getBaseline: (id: string) =>
@@ -37,9 +35,7 @@ export const controlObjectsApi = {
     form.append('structureFile', structureFile)
     form.append('worklogFile', worklogFile)
     form.append('deliveryKey', deliveryKey)
-    return apiClient.post(`/control-objects/${id}/jira/import`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    return apiClient.post(`/control-objects/${id}/jira/import`, form)
   },
 
   getEpics: (id: string) =>

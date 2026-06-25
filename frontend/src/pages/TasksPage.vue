@@ -2,7 +2,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  NDataTable, NButton, NSpace, NTag, NSelect, NAlert, NSpin, NEmpty, NUpload,
+  NDataTable, NButton, NSpace, NTag, NSelect, NAlert, NSpin, NEmpty, NUpload, NInput,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useTasksStore } from '@/stores/tasks.store'
@@ -16,6 +16,9 @@ const sprintId = route.params.sprintId as string
 const filterType = ref<TaskType[]>([])
 const filterStatus = ref<TaskStatus[]>([])
 const filterAssignee = ref<string | null>(null)
+const structureFile = ref<File | null>(null)
+const worklogFile = ref<File | null>(null)
+const parentTaskKey = ref('')
 
 const typeOptions = ['frontend','backend','qa','devops','analytics','techwriter','project','other'].map(v => ({ label: v, value: v }))
 const statusOptions = ['todo','in_progress','review','done','blocked'].map(v => ({ label: v, value: v }))
@@ -59,8 +62,17 @@ const filtered = computed(() => {
   return list
 })
 
-function handleFileUpload({ file }: any) {
-  store.importExcel(sprintId, file.file)
+function setStructureFile(file: any) {
+  structureFile.value = file?.file ?? null
+}
+
+function setWorklogFile(file: any) {
+  worklogFile.value = file?.file ?? null
+}
+
+function importTaskFiles() {
+  if (!structureFile.value || !worklogFile.value || !parentTaskKey.value.trim()) return
+  store.importExcel(sprintId, structureFile.value, worklogFile.value, parentTaskKey.value.trim())
 }
 
 onMounted(() => store.fetchBySprint(sprintId))
@@ -76,9 +88,20 @@ import { h } from 'vue'
       <NSelect v-model:value="filterType" :options="typeOptions" placeholder="Тип" multiple clearable style="min-width: 180px" />
       <NSelect v-model:value="filterStatus" :options="statusOptions" placeholder="Статус" multiple clearable style="min-width: 180px" />
       <NSelect v-model:value="filterAssignee" :options="userOptions" placeholder="Исполнитель" clearable style="min-width: 180px" />
-      <NUpload :show-file-list="false" accept=".xlsx,.xls" @change="handleFileUpload">
-        <NButton>Импортировать Excel</NButton>
+      <NInput v-model:value="parentTaskKey" placeholder="Ключ родительской задачи" clearable style="width: 230px" />
+      <NUpload :show-file-list="false" accept=".xlsx,.xls,.csv" :custom-request="({ file }) => setStructureFile(file)">
+        <NButton :type="structureFile ? 'success' : 'default'">
+          {{ structureFile ? '✓ ' + structureFile.name : 'Файл структуры' }}
+        </NButton>
       </NUpload>
+      <NUpload :show-file-list="false" accept=".xlsx,.xls,.csv" :custom-request="({ file }) => setWorklogFile(file)">
+        <NButton :type="worklogFile ? 'success' : 'default'">
+          {{ worklogFile ? '✓ ' + worklogFile.name : 'Файл трудозатрат' }}
+        </NButton>
+      </NUpload>
+      <NButton type="primary" :disabled="!structureFile || !worklogFile || !parentTaskKey.trim()" @click="importTaskFiles">
+        Импортировать Excel
+      </NButton>
     </NSpace>
 
     <NEmpty v-if="!filtered.length" description="Нет задач" style="padding: 40px 0" />

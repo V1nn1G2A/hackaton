@@ -29,12 +29,25 @@ export class TasksService {
     await this.repo.delete(id);
   }
 
-  async importStub(sprintId: string, file: Express.Multer.File) {
+  async importStub(
+    sprintId: string,
+    parentTaskKey: string,
+    structureFile: Express.Multer.File,
+    worklogFile: Express.Multer.File,
+  ) {
     const xlsx = await import('xlsx');
-    const workbook = xlsx.read(file.buffer, { type: 'buffer' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = xlsx.utils.sheet_to_json(sheet);
-    return { message: 'import received', rowCount: rows.length };
+    const readRows = (file: Express.Multer.File) => {
+      const workbook = xlsx.read(file.buffer, { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      return xlsx.utils.sheet_to_json(sheet);
+    };
+    return {
+      message: 'import received',
+      sprintId,
+      parentTaskKey,
+      structureRowCount: readRows(structureFile).length,
+      worklogRowCount: readRows(worklogFile).length,
+    };
   }
 
   findBySprint(sprintId: string) {

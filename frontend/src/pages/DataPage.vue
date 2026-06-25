@@ -32,7 +32,10 @@ async function loadBaseline() {
       controlObjectsApi.getBaseline(id),
       controlObjectsApi.getEstimateTasks(id),
     ])
-    if (b.status === 'fulfilled') baseline.value = b.value.data
+    if (b.status === 'fulfilled') {
+      baseline.value = b.value.data.baseline ?? b.value.data
+      if (Array.isArray(b.value.data.estimateTasks)) estimateTasks.value = b.value.data.estimateTasks
+    }
     if (et.status === 'fulfilled') estimateTasks.value = et.value.data
   } finally {
     baselineLoading.value = false }
@@ -43,7 +46,7 @@ async function importBaseline({ file }: any) {
   baselineImporting.value = true
   try {
     const { data } = await controlObjectsApi.importBaseline(id, file.file)
-    message.success(`Baseline загружен: ${data.estimateTasksCount ?? 0} задач`)
+    message.success(`Baseline загружен: ${data.tasksCount ?? data.estimateTasksCount ?? 0} задач`)
     await loadBaseline()
   } catch (e: any) {
     message.error(e.response?.data?.message ?? 'Ошибка импорта baseline')
@@ -70,6 +73,15 @@ const jiraLoading = ref(false)
 const jiraImporting = ref(false)
 const structureFile = ref<File | null>(null)
 const worklogFile = ref<File | null>(null)
+const deliveryKey = ref('')
+
+function setStructureFile(file: any) {
+  structureFile.value = file?.file ?? null
+}
+
+function setWorklogFile(file: any) {
+  worklogFile.value = file?.file ?? null
+}
 
 async function loadJira() {
   jiraLoading.value = true
@@ -88,9 +100,13 @@ async function importJira() {
     message.warning('Выберите оба файла')
     return
   }
+  if (!deliveryKey.value.trim()) {
+    message.warning('Укажите ключ родительской задачи')
+    return
+  }
   jiraImporting.value = true
   try {
-    await controlObjectsApi.importJira(id, structureFile.value, worklogFile.value, '')
+    await controlObjectsApi.importJira(id, structureFile.value, worklogFile.value, deliveryKey.value.trim())
     message.success('Jira-выгрузка импортирована')
     await loadJira()
   } catch (e: any) {
@@ -236,7 +252,7 @@ const filteredEmployees = computed(() => {
 })
 
 const empColumns = [
-  { title: 'ФИО', key: 'fullName', sorter: 'default' },
+  { title: 'ФИО', key: 'fullName', sorter: 'default' as const },
   { title: 'Jira логин', key: 'jiraIdentity', render: (r: any) => r.jiraIdentity ?? '—' },
   { title: 'Направление', key: 'direction', render: (r: any) => h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => r.direction ?? '—' }) },
   { title: 'Роль', key: 'role', render: (r: any) => h(NTag, { size: 'small', type: 'success', bordered: false }, { default: () => r.role ?? '—' }) },
@@ -445,14 +461,16 @@ onMounted(async () => {
           <NCard size="small" style="margin-bottom: 16px; background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.07);">
             <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 12px;">Импорт Jira-выгрузки</div>
             <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+              <NInput v-model:value="deliveryKey" size="small" placeholder="Ключ родительской задачи, например MERVEIDEV-235"
+                style="width: 260px;" clearable />
               <NUpload accept=".xlsx,.xls,.csv" :max="1" :show-file-list="false"
-                :custom-request="({ file }) => { structureFile = file.file ?? null }">
+                :custom-request="({ file }) => setStructureFile(file)">
                 <NButton size="small" :type="structureFile ? 'success' : 'default'">
                   {{ structureFile ? '✓ ' + structureFile.name : '📂 Файл структуры' }}
                 </NButton>
               </NUpload>
               <NUpload accept=".xlsx,.xls,.csv" :max="1" :show-file-list="false"
-                :custom-request="({ file }) => { worklogFile = file.file ?? null }">
+                :custom-request="({ file }) => setWorklogFile(file)">
                 <NButton size="small" :type="worklogFile ? 'success' : 'default'">
                   {{ worklogFile ? '✓ ' + worklogFile.name : '📂 Файл трудозатрат' }}
                 </NButton>
