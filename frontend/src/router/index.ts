@@ -32,6 +32,7 @@ const router = createRouter({
       ],
     },
 
+    { path: '/control-objects/:id', name: 'ControlObject', component: () => import('@/pages/ControlObjectPage.vue'), meta: { auth: true } },
     { path: '/:pathMatch(.*)*', redirect: '/projects' },
   ],
 })
