@@ -1,35 +1,40 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { h, ref, onMounted } from 'vue'
 import {
-  NButton, NDataTable, NUpload, NUploadDragger, NText, NIcon,
-  NSpace, NSpin, NAlert, NTag, useMessage,
+  NButton, NDataTable, NUpload, NUploadDragger,
+  NText, NSpin, NAlert, NTag, useMessage, NSpace,
 } from 'naive-ui'
 import type { UploadFileInfo } from 'naive-ui'
 import { employeesApi } from '@/api/employees'
 
 const message = useMessage()
-
 const employees = ref<any[]>([])
 const loading = ref(false)
 const importing = ref(false)
 
 const columns = [
-  { title: 'ФИО', key: 'fullName' },
-  { title: 'Логин (Jira)', key: 'jiraIdentity' },
-  { title: 'Email', key: 'email' },
+  { title: 'ФИО', key: 'fullName', sorter: 'default' },
+  { title: 'Логин (Jira)', key: 'jiraIdentity', render: (r: any) => r.jiraIdentity ?? '—' },
+  { title: 'Email', key: 'mail', render: (r: any) => r.mail ?? '—' },
   {
     title: 'Направление', key: 'direction',
-    render: (row: any) => h(NTag, { size: 'small', type: 'info' }, { default: () => row.direction ?? '—' }),
+    render: (r: any) => h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => r.direction ?? '—' }),
   },
   {
     title: 'Роль', key: 'role',
-    render: (row: any) => h(NTag, { size: 'small', type: 'success' }, { default: () => row.role ?? '—' }),
+    render: (r: any) => h(NTag, { size: 'small', type: 'success', bordered: false }, { default: () => r.role ?? '—' }),
   },
   {
-    title: 'Статус', key: 'active',
-    render: (row: any) => h(NTag, { size: 'small', type: row.active ? 'success' : 'default' }, {
-      default: () => row.active ? 'Активен' : 'Неактивен',
+    title: 'Статус', key: 'active', width: 110,
+    render: (r: any) => h(NTag, { size: 'small', type: r.active ? 'success' : 'default', bordered: false }, {
+      default: () => r.active ? 'Активен' : 'Неактивен',
     }),
+  },
+  {
+    title: 'Проверка', key: 'needsReview', width: 110,
+    render: (r: any) => r.needsReview
+      ? h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => '⚠ Проверить' })
+      : null,
   },
 ]
 
@@ -45,12 +50,15 @@ async function load() {
   }
 }
 
-async function handleImport(options: { file: UploadFileInfo }) {
-  if (!options.file.file) return
+async function handleImport({ file }: { file: UploadFileInfo }) {
+  if (!file.file) return
   importing.value = true
   try {
-    const { data } = await employeesApi.import(options.file.file)
-    message.success(`Импортировано: ${data.created ?? 0} новых, обновлено: ${data.updated ?? 0}`)
+    const { data } = await employeesApi.import(file.file)
+    message.success(`Импортировано: ${data.created} новых, обновлено: ${data.updated}`)
+    if (data.warnings?.length) {
+      data.warnings.forEach((w: string) => message.warning(w))
+    }
     await load()
   } catch (e: any) {
     message.error(e.response?.data?.message ?? 'Ошибка импорта')
@@ -59,64 +67,76 @@ async function handleImport(options: { file: UploadFileInfo }) {
   }
 }
 
-import { h } from 'vue'
 onMounted(load)
 </script>
 
 <template>
-  <div class="p-6 max-w-6xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-xl font-semibold text-slate-100">Справочник сотрудников</h1>
-        <p class="text-sm text-slate-500 mt-0.5">Импорт из ADUsers.xlsx — матчинг исполнителей Jira</p>
+  <div style="height: 100vh; display: flex; flex-direction: column; overflow: hidden;">
+
+    <!-- Header -->
+    <div style="padding: 20px 28px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div>
+          <div style="font-size: 18px; font-weight: 600; color: #e2e8f0;">Справочник сотрудников</div>
+          <div style="font-size: 13px; color: #64748b; margin-top: 2px;">
+            Импорт из ADUsers.xlsx · Матчинг исполнителей Jira
+            <span v-if="employees.length" style="margin-left: 8px; color: #94a3b8;">
+              {{ employees.length }} записей
+            </span>
+          </div>
+        </div>
+
+        <!-- Upload button -->
+        <NUpload
+          accept=".xlsx,.xls,.csv"
+          :max="1"
+          :show-file-list="false"
+          :custom-request="({ file }) => handleImport({ file })"
+        >
+          <NButton type="primary" :loading="importing" size="medium">
+            📂 Импорт ADUsers.xlsx
+          </NButton>
+        </NUpload>
       </div>
     </div>
 
-    <!-- Upload -->
-    <NUpload
-      accept=".xlsx,.xls,.csv"
-      :max="1"
-      :show-file-list="false"
-      :custom-request="({ file }) => handleImport({ file })"
-      class="mb-6"
-    >
-      <NUploadDragger>
-        <div class="py-6 flex flex-col items-center gap-2">
-          <NIcon size="32" style="color: #4f7cff">
-            <span style="font-size: 32px">📂</span>
-          </NIcon>
-          <NText class="text-slate-300 font-medium">
-            Перетащите ADUsers.xlsx или нажмите для выбора
-          </NText>
-          <NText depth="3" style="font-size: 12px">
-            Поддерживаются .xlsx, .xls, .csv
-          </NText>
-          <NButton
-            v-if="importing"
-            :loading="true"
-            type="primary"
-            size="small"
-            style="margin-top: 8px"
-          >
-            Импортируется...
-          </NButton>
-        </div>
-      </NUploadDragger>
-    </NUpload>
+    <!-- Drop zone (when empty) -->
+    <div v-if="!loading && employees.length === 0" style="padding: 28px; flex-shrink: 0;">
+      <NUpload
+        accept=".xlsx,.xls,.csv"
+        :max="1"
+        :show-file-list="false"
+        :custom-request="({ file }) => handleImport({ file })"
+      >
+        <NUploadDragger style="border-radius: 10px;">
+          <div style="padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+            <span style="font-size: 40px;">📂</span>
+            <NText style="font-size: 15px; color: #cbd5e1; font-weight: 500;">
+              Перетащите ADUsers.xlsx сюда
+            </NText>
+            <NText depth="3" style="font-size: 12px;">
+              Поддерживаются .xlsx, .xls, .csv
+            </NText>
+          </div>
+        </NUploadDragger>
+      </NUpload>
+    </div>
 
     <!-- Table -->
-    <NSpin :show="loading">
-      <NAlert v-if="!loading && employees.length === 0" type="info" style="margin-bottom: 16px">
-        Справочник пуст. Загрузите файл ADUsers.xlsx для импорта сотрудников.
-      </NAlert>
-      <NDataTable
-        v-if="employees.length > 0"
-        :columns="columns"
-        :data="employees"
-        :pagination="{ pageSize: 20 }"
-        size="small"
-        striped
-      />
-    </NSpin>
+    <div style="flex: 1; overflow: hidden; padding: 0 28px 28px;">
+      <NSpin :show="loading" style="height: 100%;">
+        <NDataTable
+          v-if="employees.length > 0"
+          :columns="columns"
+          :data="employees"
+          :pagination="{ pageSize: 25 }"
+          :max-height="'calc(100vh - 140px)'"
+          size="small"
+          striped
+          virtual-scroll
+        />
+      </NSpin>
+    </div>
+
   </div>
 </template>
