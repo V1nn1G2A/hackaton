@@ -1,6 +1,27 @@
 # Architecture
 
-> Документ обновляется архитектором. Версия: 0.1 (25.06.2026)
+> Документ ведёт архитектор. Версия: **1.0 (25.06.2026)** — перепроектировано под «Функциональные требования.docx».
+>
+> ⚠️ Версия 0.1 описывала обобщённый agile-дашборд (Project → Sprint → Task + Estimate по отделам).
+> ФТ описывают **инструмент baseline/actual-контроля для PM/Team Lead** — это другая доменная модель.
+> Документ переписан целиком. Трассировка к FR — в конце каждого раздела и в матрице FR → реализация.
+
+---
+
+## Что меняется относительно v0.1
+
+| Было (v0.1) | Стало (v1.0, под ФТ) |
+|-------------|----------------------|
+| `Project → Sprint → Task` (жёсткая иерархия) | `Project (админ) → ControlObject (заявка/спринт/поставка) → baseline/jira` |
+| `Estimate` со столбцами часов по отделам | `Baseline → EstimateTask → EstimateTaskHours` (направление → роль → часы) |
+| Отделы захардкожены в enum | Направления/роли — **захардкожены** (enum), значения из файлов матчатся через alias-маппинг |
+| — | `Employee` (справочник сотрудник → направление → роль) |
+| Обобщённый `Task` (self-ref) | `JiraEpic` + `JiraTask` (+ подзадачи self-ref) из Jira-выгрузки |
+| `estimate_item.linked_task_id` (item ↔ task) | связка **Jira Epic ↔ Задача оценки** (1 эпик → 1 задача оценки) |
+| Stats: суммы estimate vs task | Сравнение **baseline/actual** по уровням + риски + «Требует проверки» |
+| AI: summary + risks (плоский текст) | AI-сводка с грунтингом: выводы → вопросы → рекомендации → объяснения |
+
+**Переиспользуется из текущего кода:** auth (JWT/Passport), каркас NestJS-модулей, импорт Excel (`xlsx`), AI-каркас (OpenAI), дашборд-компоненты Vue/PrimeVue, response-interceptor, global-exception-filter.
 
 ---
 
@@ -11,13 +32,16 @@
 | Backend    | NestJS, TypeScript, TypeORM, PostgreSQL         |
 | Auth       | Passport.js + @nestjs/jwt                       |
 | Validation | class-validator + class-transformer             |
+| Импорт     | `xlsx` (Excel/CSV парсинг)                       |
 | Frontend   | Vue 3 (Composition API), Vite, Pinia, PrimeVue  |
-| AI         | Anthropic Claude API (claude-sonnet-4-6)        |
+| AI         | **OpenAI API (gpt-4o)** — канон проекта          |
 | Deploy     | Replit                                          |
+
+> AI-провайдер зафиксирован как **OpenAI gpt-4o** (см. `ai.service.ts`). Старые упоминания Anthropic Claude в `instructions.md` устарели.
 
 ---
 
-## Схема БД
+## Доменная модель (ERD)
 
 ```mermaid
 erDiagram
@@ -27,232 +51,406 @@ erDiagram
         varchar password_hash
         varchar first_name
         varchar last_name
-        enum role "admin | manager | pm | teamlead"
+        enum role "admin | pm | teamlead"
         timestamp created_at
     }
 
     PROJECTS {
         uuid id PK
-        uuid admin_id FK
+        uuid admin_id FK "создатель (admin)"
         varchar name
         text description
         timestamp created_at
     }
 
-    PROJECT_MEMBERS {
+    CONTROL_OBJECTS {
         uuid id PK
         uuid project_id FK
-        uuid user_id FK
-        timestamp joined_at
-    }
-
-    SPRINTS {
-        uuid id PK
-        uuid project_id FK
+        uuid responsible_id FK "PM/Team Lead команды"
+        enum type "request | sprint | delivery | task_pool"
         varchar name
-        enum status "planned | active | archived"
+        text description
         date start_date
-        date end_date
+        date planned_end_date
         timestamp created_at
     }
 
-    TASKS {
+    EMPLOYEES {
         uuid id PK
-        uuid sprint_id FK
-        uuid parent_id FK "nullable, self-ref"
-        varchar external_id "id из Excel"
+        varchar full_name
+        varchar jira_identity "как пишется в Jira-выгрузке"
+        enum direction "захардкоженный справочник"
+        enum role "захардкоженный справочник"
+        boolean active
+        timestamp created_at
+    }
+
+    BASELINES {
+        uuid id PK
+        uuid control_object_id FK
+        varchar source_file_name
+        decimal total_hours
+        boolean is_active
+        timestamp uploaded_at
+    }
+
+    ESTIMATE_TASKS {
+        uuid id PK
+        uuid baseline_id FK
+        uuid control_object_id FK
         varchar title
         text description
-        enum type "frontend | backend | qa | devops | analytics | techwriter | project | other"
-        enum status "todo | in_progress | review | done | blocked"
-        uuid assignee_id FK "nullable"
-        decimal estimated_hours
-        decimal actual_hours
+        varchar external_epic_key "nullable — для авто-связки FR-11"
+        timestamp created_at
+    }
+
+    ESTIMATE_TASK_HOURS {
+        uuid id PK
+        uuid estimate_task_id FK
+        enum direction "захардкоженный справочник"
+        enum role "захардкоженный справочник"
+        decimal planned_hours
+    }
+
+    JIRA_EPICS {
+        uuid id PK
+        uuid control_object_id FK
+        varchar jira_key "UK в рамках объекта"
+        varchar title
+        varchar status
+        uuid estimate_task_id FK "nullable — связка FR-10"
+        enum link_source "manual | auto | none"
         timestamp created_at
         timestamp updated_at
     }
 
-    ESTIMATES {
+    JIRA_TASKS {
         uuid id PK
-        uuid sprint_id FK
+        uuid control_object_id FK
+        varchar jira_key "UK в рамках объекта"
         varchar title
-        decimal total_hours
-        decimal frontend_hours
-        decimal backend_hours
-        decimal qa_hours
-        decimal devops_hours
-        decimal analytics_hours
-        decimal techwriter_hours
-        decimal project_hours
-        decimal other_hours
+        varchar type "тип из Jira"
+        varchar parent_key "nullable — ключ родителя из файла"
+        uuid parent_task_id FK "nullable, self-ref — подзадача"
+        varchar epic_key "nullable"
+        uuid epic_id FK "nullable — резолв иерархии"
+        varchar assignee_raw "исполнитель из файла"
+        uuid employee_id FK "nullable — резолв через справочник"
+        enum direction "nullable — резолв через справочник"
+        enum role "nullable — резолв через справочник"
+        varchar status
+        decimal current_estimate_hours
+        decimal remaining_hours "остаток"
+        decimal actual_hours "факт"
+        date due_date "nullable"
+        varchar priority "nullable"
+        timestamp jira_updated_at "nullable"
+        jsonb data_quality_flags "массив причин 'требует проверки'"
         timestamp created_at
+        timestamp updated_at
     }
 
-    ESTIMATE_ITEMS {
+    JIRA_WORKLOGS {
         uuid id PK
-        uuid estimate_id FK
-        varchar title
-        decimal estimated_hours
-        enum department "frontend | backend | qa | devops | analytics | techwriter | project | other"
-        uuid linked_task_id FK "nullable"
-        timestamp created_at
+        uuid jira_task_id FK
+        uuid employee_id FK "nullable"
+        decimal hours
+        date work_date
     }
 
     USERS ||--o{ PROJECTS : "admin_id"
-    PROJECTS ||--o{ PROJECT_MEMBERS : ""
-    USERS ||--o{ PROJECT_MEMBERS : ""
-    PROJECTS ||--o{ SPRINTS : ""
-    SPRINTS ||--o{ TASKS : ""
-    TASKS ||--o{ TASKS : "parent_id (self-ref)"
-    USERS ||--o{ TASKS : "assignee_id"
-    SPRINTS ||--o{ ESTIMATES : ""
-    ESTIMATES ||--o{ ESTIMATE_ITEMS : ""
-    TASKS ||--o{ ESTIMATE_ITEMS : "linked_task_id"
+    PROJECTS ||--o{ CONTROL_OBJECTS : ""
+    USERS ||--o{ CONTROL_OBJECTS : "responsible_id"
+    CONTROL_OBJECTS ||--o{ BASELINES : ""
+    BASELINES ||--o{ ESTIMATE_TASKS : ""
+    ESTIMATE_TASKS ||--o{ ESTIMATE_TASK_HOURS : ""
+    CONTROL_OBJECTS ||--o{ JIRA_EPICS : ""
+    CONTROL_OBJECTS ||--o{ JIRA_TASKS : ""
+    ESTIMATE_TASKS ||--o{ JIRA_EPICS : "estimate_task_id (1→N)"
+    JIRA_EPICS ||--o{ JIRA_TASKS : "epic_id"
+    JIRA_TASKS ||--o{ JIRA_TASKS : "parent_task_id (self-ref)"
+    EMPLOYEES ||--o{ JIRA_TASKS : "employee_id"
+    JIRA_TASKS ||--o{ JIRA_WORKLOGS : ""
+    EMPLOYEES ||--o{ JIRA_WORKLOGS : ""
 ```
+
+### Ключевые связи и правила
+
+- **Связка Epic ↔ Задача оценки** (FR-10): реализована как FK `estimate_task_id` на `JIRA_EPICS`.
+  Один эпик связан максимум с одной задачей оценки; одна задача оценки — с N эпиков. `link_source` различает ручную и авто-связку (FR-11).
+- **Несвязанные элементы** (FR-12) — вычисляются: эпик с `estimate_task_id = null`; задача оценки без эпиков; `JiraTask` с `epic_id = null` / `employee_id = null` / без факта / без даты.
+- **Иерархия Jira** (FR-08): `JiraTask` может быть подзадачей (`parent_task_id`, self-ref). Резолв эпика: `epic_id` по `epic_key`, иначе подъём по `parent_key`/`parent_task_id` (подзадача → родительская задача → эпик). Факт подзадач агрегируется к родителю и эпику.
+- **Факт** (FR-09): если в выгрузке есть worklog-строки — пишутся в `JIRA_WORKLOGS` и агрегируются в `JiraTask.actual_hours`; иначе берётся готовый факт из строки задачи. Распределение по роли/направлению — через `employee_id` (worklog) или через `assignee → Employee`.
+- **Baseline неизменяем** (FR-02): загрузка Jira не трогает `BASELINES`/`ESTIMATE_TASKS`. Повторная загрузка baseline — явное действие (новая запись + `is_active`).
+- **Направления и роли захардкожены** (отклонение от буквы FR-04 — по решению заказчика): `direction`/`role` — фиксированные enum в коде. Значения из baseline-файла и справочника сотрудников **матчатся** на них через alias-маппинг в импорт-сервисе (например `"Бэкенд" / "BE" / "backend" → direction.backend`). Не распознанные значения → «требует проверки» (FR-12). Этим выполняется дух FR-04 (нормализация к единому виду) при фиксированном наборе.
 
 ### Enum-типы PostgreSQL
 
 ```sql
-CREATE TYPE user_role AS ENUM ('admin', 'manager', 'pm', 'teamlead');
-CREATE TYPE sprint_status AS ENUM ('planned', 'active', 'archived');
-CREATE TYPE task_type AS ENUM ('frontend', 'backend', 'qa', 'devops', 'analytics', 'techwriter', 'project', 'other');
-CREATE TYPE task_status AS ENUM ('todo', 'in_progress', 'review', 'done', 'blocked');
-CREATE TYPE department AS ENUM ('frontend', 'backend', 'qa', 'devops', 'analytics', 'techwriter', 'project', 'other');
+CREATE TYPE user_role        AS ENUM ('admin', 'pm', 'teamlead');
+CREATE TYPE control_obj_type AS ENUM ('request', 'sprint', 'delivery', 'task_pool');
+CREATE TYPE epic_link_source AS ENUM ('manual', 'auto', 'none');
+
+-- Захардкоженные справочники (значения из файлов матчатся через alias-маппинг):
+CREATE TYPE direction AS ENUM ('frontend','backend','qa','devops','analytics','techwriter','project','other');
+CREATE TYPE role      AS ENUM ('developer','team_lead','qa_engineer','analyst','devops','tech_writer','pm','other');
+-- direction переиспользует набор из v0.1 (бывший TaskType) — уже есть в коде.
+-- Точный список ролей уточняется по файлам справочника; альясы — в import-сервисе.
+
+-- Статусы/типы Jira и приоритеты хранятся как varchar:
+-- значения приходят из выгрузки и заранее не фиксированы (FR-06).
 ```
 
 ### Индексы
 
 ```sql
--- Горячие запросы: задачи спринта, дерево задач, фильтрация по исполнителю/типу
-CREATE INDEX idx_tasks_sprint_id ON tasks(sprint_id);
-CREATE INDEX idx_tasks_parent_id ON tasks(parent_id);
-CREATE INDEX idx_tasks_assignee_id ON tasks(assignee_id);
-CREATE INDEX idx_tasks_type ON tasks(type);
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_sprints_project_id ON sprints(project_id);
-CREATE INDEX idx_project_members_project_id ON project_members(project_id);
-CREATE INDEX idx_estimate_items_estimate_id ON estimate_items(estimate_id);
+CREATE INDEX idx_control_objects_project   ON control_objects(project_id);
+CREATE INDEX idx_estimate_tasks_baseline   ON estimate_tasks(baseline_id);
+CREATE INDEX idx_estimate_tasks_object     ON estimate_tasks(control_object_id);
+CREATE INDEX idx_est_hours_task            ON estimate_task_hours(estimate_task_id);
+CREATE INDEX idx_jira_epics_object         ON jira_epics(control_object_id);
+CREATE INDEX idx_jira_epics_estimate_task  ON jira_epics(estimate_task_id);
+CREATE UNIQUE INDEX uq_jira_epics_key      ON jira_epics(control_object_id, jira_key);
+CREATE INDEX idx_jira_tasks_object         ON jira_tasks(control_object_id);
+CREATE INDEX idx_jira_tasks_epic           ON jira_tasks(epic_id);
+CREATE INDEX idx_jira_tasks_parent         ON jira_tasks(parent_task_id);
+CREATE INDEX idx_jira_tasks_employee       ON jira_tasks(employee_id);
+CREATE INDEX idx_jira_tasks_status         ON jira_tasks(status);
+CREATE UNIQUE INDEX uq_jira_tasks_key      ON jira_tasks(control_object_id, jira_key);
+CREATE INDEX idx_worklogs_task             ON jira_worklogs(jira_task_id);
+CREATE INDEX idx_employees_direction       ON employees(direction);
 ```
+
+---
+
+## Расчётный слой (бизнес-логика)
+
+> Вынесен в отдельный `analytics`-модуль. Всё считается на лету из расчётных данных — никаких «магических» значений в AI.
+
+### Сравнение baseline/actual (FR-13)
+
+Считается на уровнях: **проект → задача оценки → связанный Jira Epic → направление → роль**.
+Для каждого уровня:
+
+```
+baseline_hours   = Σ planned_hours (estimate_task_hours)
+actual_hours     = Σ actual (jira_tasks через связанные эпики / worklogs)
+deviation        = actual_hours - baseline_hours
+usage_percent    = actual_hours / baseline_hours * 100
+risk_status      = f(usage_percent, deadline, data_quality)   // см. FR-19
+```
+
+Если задача оценки не связана с эпиком — сравнение только по baseline + предупреждение (FR-13).
+
+### Индикаторы риска (FR-19) — пороги фиксированы в MVP
+
+| Цвет | Условие (любое) |
+|------|-----------------|
+| 🔴 red    | `usage_percent > 100` (перерасход) ИЛИ просрочен срок |
+| 🟡 yellow | `usage_percent ≥ 85` (приближение к baseline) ИЛИ срок < 1 дня |
+| ⚪ grey   | неполные данные / несвязанный элемент (риск качества данных) |
+| 🟢 green  | в норме |
+
+> Факт эпика = Σ факта его задач (включая подзадачи). У каждого риска — явная причина (FR-19, FR-25).
+> Пользовательская настройка порогов — после MVP.
+
+### Контроль сроков (FR-18)
+
+`planned_end_date` объекта + `due_date` задач → просроченные / близкие к сроку / без движения перед сроком.
+Нет дат → предупреждение о неполных данных (не выдумываем).
+
+### Блок «Требует проверки» / качество данных (FR-12)
+
+Вычисляемый список: несвязанные эпики, несвязанные задачи оценки, `JiraTask` без эпика/исполнителя/роли/направления/факта/даты.
+Каждому — причина (`data_quality_flags`). Эти ограничения передаются в AI как контекст (FR-12, FR-25).
 
 ---
 
 ## API Routes
 
-Базовый префикс: `/api/v1`
+Базовый префикс: `/api/v1`. Все, кроме auth, под `JwtAuthGuard`.
 
 ### Auth
-| Метод | Путь               | Описание              | Guard |
-|-------|--------------------|-----------------------|-------|
-| POST  | /auth/register     | Регистрация           | —     |
-| POST  | /auth/login        | Вход, возврат JWT     | —     |
-| GET   | /auth/me           | Текущий пользователь  | JWT   |
+| Метод | Путь            | Описание             |
+|-------|-----------------|----------------------|
+| POST  | /auth/register  | Регистрация          |
+| POST  | /auth/login     | Вход, возврат JWT    |
+| GET   | /auth/me        | Текущий пользователь |
 
-### Users
-| Метод | Путь          | Описание              | Guard |
-|-------|---------------|-----------------------|-------|
-| GET   | /users        | Список всех (admin)   | JWT   |
-| GET   | /users/:id    | Профиль пользователя  | JWT   |
-| PATCH | /users/:id    | Обновить профиль      | JWT   |
+### Проекты (создаёт admin)
+| Метод  | Путь            | Описание                       | Guard       |
+|--------|-----------------|--------------------------------|-------------|
+| POST   | /projects       | Создать проект                 | JWT + admin |
+| GET    | /projects       | Список проектов                | JWT         |
+| GET    | /projects/:id   | Детали проекта                 | JWT         |
+| PATCH  | /projects/:id   | Обновить проект                | JWT + admin |
+| DELETE | /projects/:id   | Удалить проект                 | JWT + admin |
 
-### Projects
-| Метод  | Путь                                | Описание                        | Guard |
-|--------|-------------------------------------|---------------------------------|-------|
-| POST   | /projects                           | Создать проект                  | JWT   |
-| GET    | /projects                           | Мои проекты                     | JWT   |
-| GET    | /projects/:id                       | Детали проекта                  | JWT   |
-| PATCH  | /projects/:id                       | Обновить проект                 | JWT   |
-| DELETE | /projects/:id                       | Удалить проект                  | JWT   |
-| POST   | /projects/:id/members               | Добавить участника              | JWT   |
-| DELETE | /projects/:id/members/:userId       | Удалить участника               | JWT   |
-| GET    | /projects/:id/members               | Список участников               | JWT   |
+### Справочники (FR-04, FR-05)
+| Метод  | Путь                       | Описание                                       |
+|--------|----------------------------|------------------------------------------------|
+| GET    | /directions                | Список направлений (захардкожен, read-only)    |
+| GET    | /roles                     | Список ролей (захардкожен, read-only)          |
+| GET    | /employees                 | Справочник сотрудников                         |
+| POST   | /employees                 | Добавить сотрудника вручную                    |
+| PATCH  | /employees/:id             | Редактировать сотрудника                       |
+| DELETE | /employees/:id             | Удалить/деактивировать                         |
+| POST   | /employees/import          | Импорт справочника из Excel/CSV                |
 
-### Sprints
-| Метод  | Путь                                | Описание                        | Guard |
-|--------|-------------------------------------|---------------------------------|-------|
-| POST   | /projects/:projectId/sprints        | Создать спринт                  | JWT   |
-| GET    | /projects/:projectId/sprints        | Список спринтов проекта         | JWT   |
-| GET    | /sprints/:id                        | Детали спринта                  | JWT   |
-| PATCH  | /sprints/:id                        | Обновить / сменить статус       | JWT   |
-| DELETE | /sprints/:id                        | Удалить спринт                  | JWT   |
+### Объекты контроля (FR-01) — внутри проекта
+| Метод  | Путь                                       | Описание                          |
+|--------|--------------------------------------------|-----------------------------------|
+| POST   | /projects/:projectId/control-objects       | Создать объект контроля (PM/TL)   |
+| GET    | /projects/:projectId/control-objects       | Объекты контроля проекта          |
+| GET    | /control-objects/:id                       | Детали объекта                    |
+| PATCH  | /control-objects/:id                       | Обновить                          |
+| DELETE | /control-objects/:id                       | Удалить                           |
 
-### Tasks
-| Метод  | Путь                                | Описание                        | Guard |
-|--------|-------------------------------------|---------------------------------|-------|
-| POST   | /sprints/:sprintId/tasks/import     | Импорт из Excel (file upload)   | JWT   |
-| GET    | /sprints/:sprintId/tasks            | Дерево задач спринта            | JWT   |
-| GET    | /tasks/:id                          | Детали задачи                   | JWT   |
-| PATCH  | /tasks/:id                          | Обновить задачу / статус        | JWT   |
-| DELETE | /tasks/:id                          | Удалить задачу                  | JWT   |
+### Baseline и задачи оценки (FR-02, FR-03, FR-04, FR-16)
+| Метод  | Путь                                    | Описание                              |
+|--------|-----------------------------------------|---------------------------------------|
+| POST   | /control-objects/:id/baseline/import    | Загрузить baseline (Excel/CSV)        |
+| GET    | /control-objects/:id/baseline           | Активный baseline + сводка            |
+| GET    | /control-objects/:id/estimate-tasks     | Список задач оценки                   |
+| GET    | /estimate-tasks/:id                      | Задача оценки + часы по ролям/связки  |
+| PATCH  | /estimate-tasks/:id                       | Ручное редактирование                 |
 
-### Estimates (Заявки)
-| Метод  | Путь                                        | Описание                        | Guard |
-|--------|---------------------------------------------|---------------------------------|-------|
-| POST   | /sprints/:sprintId/estimates/import         | Импорт заявки из Excel          | JWT   |
-| GET    | /sprints/:sprintId/estimates                | Список заявок спринта           | JWT   |
-| GET    | /estimates/:id                              | Детали заявки с items           | JWT   |
-| POST   | /estimate-items/:itemId/link/:taskId        | Связать item с таской           | JWT   |
-| DELETE | /estimate-items/:itemId/link                | Разорвать связь                 | JWT   |
+### Jira-выгрузка (FR-06, FR-07, FR-08, FR-09, FR-17)
+| Метод  | Путь                                  | Описание                                       |
+|--------|---------------------------------------|------------------------------------------------|
+| POST   | /control-objects/:id/jira/import      | Импорт Jira-выгрузки (upsert по ключу)         |
+| GET    | /control-objects/:id/jira/epics       | Таблица эпиков (фильтры/сортировка)            |
+| GET    | /control-objects/:id/jira/tasks       | Таблица задач (фильтры: направление/роль/статус/риск/срок/приоритет) |
+| GET    | /jira-epics/:id                       | Детали эпика + его задачи                       |
+| GET    | /jira-tasks/:id                       | Детали задачи                                   |
+| PATCH  | /jira-tasks/:id                       | Форма редактирования (доуточнение полей)       |
 
-### Analytics / Dashboard
-| Метод | Путь                                  | Описание                              | Guard |
-|-------|---------------------------------------|---------------------------------------|-------|
-| GET   | /sprints/:id/stats/tasks              | Статистика по задачам спринта         | JWT   |
-| GET   | /sprints/:id/stats/estimates          | Статистика по заявкам спринта         | JWT   |
-| GET   | /sprints/:id/stats/departments        | Часы по отделам                       | JWT   |
-| GET   | /projects/:id/stats/overview          | Сводка по проекту (все спринты)       | JWT   |
+### Связки Epic ↔ Задача оценки (FR-10, FR-11)
+| Метод  | Путь                                          | Описание                          |
+|--------|-----------------------------------------------|-----------------------------------|
+| POST   | /estimate-tasks/:id/epics/:epicId/link        | Ручная привязка эпика             |
+| DELETE | /estimate-tasks/:id/epics/:epicId/link        | Разорвать связь                   |
+| POST   | /control-objects/:id/auto-link                | Авто-связка по epic key           |
 
-### AI
-| Метод | Путь                          | Описание                              | Guard |
-|-------|-------------------------------|---------------------------------------|-------|
-| POST  | /ai/sprint/:id/summary        | Саммари спринта через Claude          | JWT   |
-| POST  | /ai/sprint/:id/risks          | Анализ рисков через Claude            | JWT   |
+### Аналитика и дашборд (FR-13, FR-14, FR-15, FR-18, FR-19, FR-26)
+| Метод | Путь                                      | Описание                                  |
+|-------|-------------------------------------------|-------------------------------------------|
+| GET   | /control-objects/:id/dashboard            | Верхнеуровневый дашборд                    |
+| GET   | /control-objects/:id/comparison           | Сравнение baseline/actual по уровням       |
+| GET   | /control-objects/:id/by-role-direction    | План/факт по направлениям и ролям          |
+| GET   | /control-objects/:id/deadlines            | Контроль сроков                            |
+| GET   | /control-objects/:id/risks                | Список рисков с причинами                   |
+| GET   | /control-objects/:id/data-quality         | Блок «Требует проверки»                     |
+
+> Фильтры (FR-26) — query-параметры на `/jira/tasks`, `/jira/epics`, `/risks`.
+
+### AI (FR-20, FR-21, FR-24, FR-25)
+| Метод | Путь                                | Описание                                            |
+|-------|-------------------------------------|-----------------------------------------------------|
+| POST  | /control-objects/:id/ai/summary     | AI-сводка: интерпретация + вопросы + рекомендации + объяснения |
+
+Ответ структурирован, каждый пункт грунтован на показатель/сущность:
+
+```json
+{
+  "generated_at": "2026-06-25T12:00:00Z",
+  "control_object": "Проект X",
+  "state": "Общая интерпретация состояния...",
+  "deviations": [{ "level": "estimate_task", "ref_id": "uuid", "text": "...", "metric": "usage_percent=132" }],
+  "risk_zones":  [{ "ref_id": "uuid", "text": "...", "basis": "перерасход факта над baseline" }],
+  "questions":   [{ "ref_id": "uuid", "text": "Вопрос к команде, привязан к задаче/эпику/роли" }],
+  "recommendations": [{ "ref_id": "uuid", "action": "переоценить эпик", "basis": "..." }],
+  "explanations":    [{ "ref_id": "uuid", "basis": "близкий срок + нет движения" }],
+  "data_gaps": ["Чего не хватает в данных для вывода"]
+}
+```
+
+**Промпт-контракт AI:** на вход подаются ТОЛЬКО расчётные данные (baseline, actual, статусы, сроки, обновления, связки, качество данных). Запрещено выдумывать факты; при неполных данных AI явно сообщает, чего не хватает (FR-20, FR-25). `data_quality` передаётся как ограничение (FR-12).
 
 ---
 
 ## Карта сайта (Frontend)
 
 ```
-/                           → redirect → /login или /projects
-/login                      → Страница входа
-/register                   → Страница регистрации
+/                                   → redirect → /login или /control-objects
+/login                              → Вход
+/register                           → Регистрация
 
-/projects                   → Список проектов текущего пользователя
-/projects/new               → Форма создания проекта
-/projects/:id               → Обзор проекта (спринты, участники)
-/projects/:id/members       → Управление участниками
+/employees                          → Справочник сотрудников (импорт, ручное добавление, правка)  [FR-05]
 
-/projects/:id/sprints/new           → Форма создания спринта
-/projects/:id/sprints/:sprintId     → Обзор спринта (табы ниже)
-  ├── /tasks                        → Дерево задач / импорт Excel
-  ├── /kanban                       → Канбан доска (фильтры: отдел, исполнитель, статус)
-  ├── /estimates                    → Список заявок
-  ├── /estimates/:estimateId        → Детали заявки + линковка с тасками
-  ├── /stats                        → Дашборд: графики, KPI, часы по отделам
-  └── /ai                           → AI саммари и анализ рисков спринта
+/projects                           → Список проектов (создание — только admin)
+/projects/new                       → Форма создания проекта (admin)
+/projects/:projectId                → Проект: список объектов контроля команд
+/projects/:projectId/control-objects/new  → Форма создания объекта контроля (PM/TL)               [FR-01]
+
+/control-objects/:id                → Обзор объекта контроля (табы ниже)
+  ├── /dashboard                    → Верхнеуровневый дашборд: KPI, риски, предупреждения          [FR-14]
+  ├── /baseline                     → Загрузка baseline + таблица задач оценки                     [FR-02,03,16]
+  ├── /jira                         → Загрузка Jira-выгрузки + таблицы Epic / Task                 [FR-06,07,17]
+  ├── /links                        → Связка Jira Epic ↔ задача оценки (ручная/авто)               [FR-10,11]
+  ├── /comparison                   → Baseline/actual по уровням + по ролям/направлениям           [FR-13,15]
+  ├── /deadlines                    → Контроль сроков                                              [FR-18]
+  ├── /data-quality                 → «Требует проверки»                                           [FR-12]
+  └── /ai                           → AI-сводка + кнопка «Скопировать сводку»                       [FR-20–25,27]
 ```
+
+Кнопка **«Скопировать сводку»** (FR-27): копирует текст AI-сводки с датой формирования и названием объекта в буфер.
 
 ---
 
 ## JWT Payload
 
 ```json
-{
-  "sub": "uuid",
-  "email": "user@example.com",
-  "role": "admin | manager | pm | teamlead",
-  "iat": 1234567890,
-  "exp": 1234567890
-}
+{ "sub": "uuid", "email": "user@example.com", "role": "admin | pm | teamlead", "iat": 0, "exp": 0 }
 ```
 
-Время жизни токена: **24h**. Refresh стратегия: не реализуем (хакатон — переlogин при истечении).
+Время жизни токена: **24h**. Refresh не реализуем (хакатон — релогин при истечении).
+Администрирование пользователей упрощено (FR-01: «не требует сложного администрирования»).
+
+**Роли:** `admin` создаёт проекты; `pm`/`teamlead` создают и ведут объекты контроля внутри проектов своей команды. Разграничение — `RolesGuard` (уже есть в коде).
 
 ---
 
-## Открытые вопросы
+## Матрица трассировки FR → реализация
 
-- [ ] Формат Excel файлов — нужны примеры для парсинга (колонки, типы данных)
-- [ ] Матчинг исполнителей из Excel с `users` в БД — по ФИО? Что делать при несовпадении?
-- [ ] `actual_hours` в Tasks — откуда берётся (из Excel или ручной ввод)?
-- [ ] Статус задачи — из Excel или только ручной на канбане?
-- [ ] Нужна ли история загрузок Excel (аудит)?
+| FR | Сущности / эндпоинты / экраны |
+|----|-------------------------------|
+| FR-01 | `Project (admin) → ControlObject`; `POST /projects/:id/control-objects`; формы создания |
+| FR-02 | `Baseline (is_active)`; `POST /baseline/import`; неизменяемость при Jira-импорте |
+| FR-03 | `EstimateTask`; пропуск служебных/итоговых строк; warning на неполной структуре |
+| FR-04 | `EstimateTaskHours (direction+role enum)`; **захардкоженные справочники** + alias-маппинг из файлов (отклонение от буквы FR-04 по решению заказчика) |
+| FR-05 | `Employee`; `/employees`, `POST /employees/import`, PATCH |
+| FR-06 | `JiraTask`; `POST /jira/import` (upsert по ключу); фильтры/сортировка |
+| FR-07 | `JiraEpic`/`JiraTask`; резолв эпика; группа «без эпика» |
+| FR-08 | `parent_task_id` (подзадачи self-ref); `epic_id` резолв по `epic_key`/`parent_key`; агрегация факта подзадач к задаче/эпику |
+| FR-09 | `JiraWorklog` + `actual_hours`; распределение по роли через `Employee` |
+| FR-10 | FK `jira_epics.estimate_task_id`; `POST /estimate-tasks/:id/epics/:epicId/link` |
+| FR-11 | `external_epic_key` + `link_source=auto`; `POST /auto-link` |
+| FR-12 | `data_quality_flags`; `GET /data-quality`; `/data-quality` экран |
+| FR-13 | `analytics`: comparison по уровням; `GET /comparison` |
+| FR-14 | `GET /dashboard`; `/dashboard` экран |
+| FR-15 | `GET /by-role-direction`; пары направление+роль |
+| FR-16 | `GET /estimate-tasks`; `/baseline` экран |
+| FR-17 | `GET /jira/epics`, `/jira/tasks`; `/jira` экран |
+| FR-18 | `GET /deadlines`; `due_date`/`planned_end_date` |
+| FR-19 | risk_status (4 цвета, пороги фиксированы); `GET /risks` |
+| FR-20 | `POST /ai/summary` (state, deviations) |
+| FR-21 | AI `questions[]` (грунтованы на сущности) |
+| FR-24 | AI `recommendations[]` (как предложения) |
+| FR-25 | AI `explanations[]` (basis на каждый вывод) |
+| FR-26 | query-фильтры на таблицах/рисках *(Should)* |
+| FR-27 | кнопка «Скопировать сводку» *(Should)* |
+
+---
+
+## Открытые вопросы (требуют примеров файлов перед реализацией импорта)
+
+- [ ] **Формат baseline-файла**: колонки названия/часов; роли строками или отдельными колонками (FR-04 поддерживает оба, но нужен пример). Как отличать «итоговую» строку от значимой (FR-03)?
+- [ ] **Формат Jira-выгрузки**: имена колонок для key, type, parent/epic key, assignee, status, факт, остаток, due date, priority (FR-06). Есть ли worklog-строки или факт уже агрегирован (FR-09)?
+- [ ] **Матчинг исполнителя со справочником** (FR-05): по `full_name`/`jira_identity`? Что при несовпадении — в «требует проверки» (по ФТ — да)?
+- [ ] **Формат справочника сотрудников**: колонки ФИО / Jira-имя / направление / роль / активность (FR-05).
+- [ ] **external_epic_key в baseline** (FR-11): в каком виде проставляется, чтобы авто-связка сработала?
+- [ ] **Alias-маппинг направлений/ролей**: какие написания направлений и ролей встречаются в файлах (baseline, справочник, Jira) — нужно, чтобы составить словарь матчинга на захардкоженные enum и финализировать список ролей.
+- [ ] **Тип объекта контроля**: подтвердить набор `request | sprint | delivery | task_pool` (тип «поставка» = delivery) — соответствует ли терминологии заказчика.
+
+> Эти вопросы закрываются примерами Excel/CSV. До их получения парсеры пишутся под мок-файлы (FR-06, FR-08 допускают подготовленную тестовую структуру).
