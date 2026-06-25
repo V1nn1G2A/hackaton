@@ -12,6 +12,7 @@ import { ControlObject } from '../modules/control-objects/entities/control-objec
 import { Baseline } from '../modules/baseline/entities/baseline.entity';
 import { EstimateTask } from '../modules/baseline/entities/estimate-task.entity';
 import { EstimateTaskHours } from '../modules/baseline/entities/estimate-task-hours.entity';
+import { Employee } from '../modules/employees/entities/employee.entity';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { EstimateTaskHours } from '../modules/baseline/entities/estimate-task-ho
           Baseline,
           EstimateTask,
           EstimateTaskHours,
+          Employee,
         ],
         synchronize: true,
       }),

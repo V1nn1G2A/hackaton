@@ -12,6 +12,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ControlObjectsModule } from './modules/control-objects/control-objects.module';
 import { BaselineModule } from './modules/baseline/baseline.module';
+import { EmployeesModule } from './modules/employees/employees.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { BaselineModule } from './modules/baseline/baseline.module';
     AiModule,
     ControlObjectsModule,
     BaselineModule,
+    EmployeesModule,
   ],
 })
 export class AppModule {}
