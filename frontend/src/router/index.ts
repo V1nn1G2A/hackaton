@@ -35,6 +35,8 @@ const router = createRouter({
     { path: '/control-objects/:id', name: 'ControlObject', component: () => import('@/pages/ControlObjectPage.vue'), meta: { auth: true } },
     { path: '/control-objects/:id/ai', name: 'AiAnalysis', component: () => import('@/pages/AiAnalysisPage.vue'), meta: { auth: true } },
     { path: '/control-objects/:id/data', name: 'DataSection', component: () => import('@/pages/DataPage.vue'), meta: { auth: true } },
+    { path: '/control-objects/:id/comparison', name: 'Comparison', component: () => import('@/pages/ComparisonPage.vue'), meta: { auth: true } },
+    { path: '/control-objects/:id/deadlines', name: 'Deadlines', component: () => import('@/pages/DeadlinesPage.vue'), meta: { auth: true } },
     { path: '/:pathMatch(.*)*', redirect: '/projects' },
   ],
 })

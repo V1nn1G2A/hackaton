@@ -320,6 +320,7 @@ const dqCount = computed(() => {
                 size="small"
                 :bordered="false"
                 :pagination="false"
+                :row-props="(r: any) => ({ style: 'cursor:pointer', onClick: () => router.push(`/control-objects/${id}/comparison?direction=${r.direction}`) })"
               />
               <NAlert v-else type="info" :show-icon="false" style="font-size: 13px;">
                 Нет данных по направлениям
@@ -336,6 +337,7 @@ const dqCount = computed(() => {
                 size="small"
                 :bordered="false"
                 :pagination="false"
+                :row-props="(r: any) => ({ style: 'cursor:pointer', onClick: () => router.push(`/control-objects/${id}/comparison?role=${r.role}`) })"
               />
               <NAlert v-else type="info" :show-icon="false" style="font-size: 13px;">
                 Нет данных по ролям
@@ -392,6 +394,10 @@ const dqCount = computed(() => {
                     <span style="color: #22c55e; font-weight: 600;">{{ dashboard?.epicRisk?.green ?? 0 }}</span>
                   </div>
                 </div>
+                <NButton text size="small" style="color: #4f7cff;"
+                  @click="router.push(`/control-objects/${id}/deadlines`)">
+                  Перейти к срокам →
+                </NButton>
               </NCard>
 
               <!-- Needs Review -->
