@@ -1,30 +1,16 @@
 <script setup lang="ts">
 import AppSidebar from './AppSidebar.vue'
-import { RouterView } from 'vue-router'
 
 defineProps<{ title?: string }>()
 </script>
 
 <template>
-  <div class="app-layout">
+  <div class="flex min-h-screen" style="background: #0c111c">
     <AppSidebar />
-    <div class="layout-main">
-      <slot />
+    <div class="flex-1 min-w-0 overflow-y-auto">
+      <main class="mx-auto w-full max-w-7xl p-5">
+        <slot />
+      </main>
     </div>
   </div>
 </template>
-
-<style scoped>
-.app-layout {
-  display: flex;
-  min-height: 100vh;
-  background: #101014;
-}
-
-.layout-main {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  padding: 24px;
-}
-</style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import { useRoute, useRouter, RouterView } from 'vue-router'
-import { NPageHeader, NTabs, NTabPane, NTag, NSpin } from 'naive-ui'
+import { NTag, NSpin } from 'naive-ui'
 import AppLayout from '@/components/Layout/AppLayout.vue'
 import { useSprintsStore } from '@/stores/sprints.store'
 
@@ -13,23 +13,19 @@ const projectId = route.params.id as string
 const sprintId = route.params.sprintId as string
 
 const tabs = [
-  { name: 'tasks', label: 'Задачи', path: 'tasks' },
-  { name: 'kanban', label: 'Канбан', path: 'kanban' },
-  { name: 'estimates', label: 'Заявки', path: 'estimates' },
-  { name: 'stats', label: 'Статистика', path: 'stats' },
-  { name: 'ai', label: '✨ AI', path: 'ai' },
+  { name: 'Tasks',   label: 'Задачи',      path: 'tasks' },
+  { name: 'Kanban',  label: 'Канбан',      path: 'kanban' },
+  { name: 'Estimates', label: 'Заявки',    path: 'estimates' },
+  { name: 'Stats',   label: 'Статистика',  path: 'stats' },
+  { name: 'AI',      label: '✦ AI',        path: 'ai' },
 ]
 
 const activeTab = computed(() => route.name as string)
 
-function onTabChange(name: string | number) {
-  router.push(`/projects/${projectId}/sprints/${sprintId}/${name}`)
-}
-
-const statusMap: Record<string, { type: 'success' | 'info' | 'default'; label: string }> = {
-  active: { type: 'success', label: 'Активный' },
-  planned: { type: 'info', label: 'Запланирован' },
-  archived: { type: 'default', label: 'Архив' },
+const statusConfig: Record<string, { color: string; label: string }> = {
+  active:   { color: '#34d399', label: 'Активный' },
+  planned:  { color: '#38bdf8', label: 'Запланирован' },
+  archived: { color: '#64748b', label: 'Архив' },
 }
 
 onMounted(() => store.fetchOne(sprintId))
@@ -39,29 +35,56 @@ onMounted(() => store.fetchOne(sprintId))
   <AppLayout>
     <NSpin v-if="store.loading" />
     <template v-else>
-      <NPageHeader
-        :title="store.current?.name ?? 'Спринт'"
-        @back="router.push(`/projects/${projectId}`)"
-      >
-        <template #extra>
-          <NTag v-if="store.current" :type="statusMap[store.current.status].type" size="small">
-            {{ statusMap[store.current.status].label }}
+      <!-- Page header -->
+      <div class="mb-5">
+        <div class="flex items-center gap-2 mb-1">
+          <button
+            class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            @click="router.push(`/projects/${projectId}`)"
+          >
+            ← Назад
+          </button>
+        </div>
+        <div class="flex items-center gap-3">
+          <h1 class="text-xl font-semibold text-slate-200">{{ store.current?.name ?? 'Спринт' }}</h1>
+          <NTag
+            v-if="store.current"
+            size="small"
+            :bordered="false"
+            :style="{
+              background: statusConfig[store.current.status].color + '20',
+              color: statusConfig[store.current.status].color,
+            }"
+          >
+            {{ statusConfig[store.current.status].label }}
           </NTag>
-        </template>
-      </NPageHeader>
-
-      <NTabs
-        type="line"
-        :value="activeTab"
-        style="margin-top: 16px"
-        @update:value="onTabChange"
-      >
-        <NTabPane v-for="t in tabs" :key="t.name" :name="t.name" :tab="t.label" display-directive="show" />
-      </NTabs>
-
-      <div style="margin-top: 16px">
-        <RouterView />
+        </div>
+        <p v-if="store.current?.startDate" class="text-xs text-slate-500 mt-0.5">
+          {{ store.current.startDate }} — {{ store.current.endDate ?? '…' }}
+        </p>
       </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-1 mb-5 border-b border-edge">
+        <button
+          v-for="t in tabs"
+          :key="t.name"
+          class="px-3 py-2 text-xs font-medium transition-colors relative"
+          :class="activeTab === t.name
+            ? 'text-primary'
+            : 'text-slate-500 hover:text-slate-300'"
+          @click="router.push(`/projects/${projectId}/sprints/${sprintId}/${t.path}`)"
+        >
+          {{ t.label }}
+          <span
+            v-if="activeTab === t.name"
+            class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t"
+          />
+        </button>
+      </div>
+
+      <!-- Tab content -->
+      <RouterView />
     </template>
   </AppLayout>
 </template>
