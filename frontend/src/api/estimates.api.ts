@@ -10,8 +10,6 @@ export const estimatesApi = {
   importFile: (sprintId: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return apiClient.post<Estimate>(`/sprints/${sprintId}/estimates/import`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    return apiClient.post<Estimate>(`/sprints/${sprintId}/estimates/import`, form)
   },
 }

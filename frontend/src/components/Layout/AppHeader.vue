@@ -23,7 +23,7 @@ const auth = useAuthStore()
       </button>
       <div class="user-chip">
         <i class="pi pi-user" />
-        <span>{{ auth.user?.name ?? 'Гость' }}</span>
+        <span>{{ auth.user ? `${auth.user.firstName} ${auth.user.lastName}` : 'Гость' }}</span>
         <span class="role-badge">{{ auth.user?.role ?? '' }}</span>
       </div>
     </div>

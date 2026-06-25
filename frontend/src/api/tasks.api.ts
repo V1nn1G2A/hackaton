@@ -5,11 +5,11 @@ export const tasksApi = {
   list: (sprintId: string) => apiClient.get<Task[]>(`/sprints/${sprintId}/tasks`),
   update: (id: string, data: Partial<Task>) => apiClient.patch<Task>(`/tasks/${id}`, data),
   updateStatus: (id: string, status: TaskStatus) => apiClient.patch<Task>(`/tasks/${id}`, { status }),
-  importExcel: (sprintId: string, file: File) => {
+  importExcel: (sprintId: string, structureFile: File, worklogFile: File, parentTaskKey: string) => {
     const form = new FormData()
-    form.append('file', file)
-    return apiClient.post<Task[]>(`/sprints/${sprintId}/tasks/import`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    form.append('structureFile', structureFile)
+    form.append('worklogFile', worklogFile)
+    form.append('deliveryKey', parentTaskKey)
+    return apiClient.post(`/sprints/${sprintId}/tasks/import`, form)
   },
 }

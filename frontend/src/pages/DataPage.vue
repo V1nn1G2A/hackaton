@@ -49,6 +49,7 @@ async function loadBaseline() {
     const [b, et] = await Promise.allSettled([
       controlObjectsApi.getBaseline(id),
       controlObjectsApi.getEstimateTasks(id),
+<<<<<<< HEAD
     ]);
     if (b.status === "fulfilled") {
       baseline.value = b.value.data.baseline ?? b.value.data;
@@ -56,6 +57,14 @@ async function loadBaseline() {
         estimateTasks.value = b.value.data.estimateTasks;
     }
     if (et.status === "fulfilled") estimateTasks.value = et.value.data;
+=======
+    ])
+    if (b.status === 'fulfilled') {
+      baseline.value = b.value.data.baseline ?? b.value.data
+      if (Array.isArray(b.value.data.estimateTasks)) estimateTasks.value = b.value.data.estimateTasks
+    }
+    if (et.status === 'fulfilled') estimateTasks.value = et.value.data
+>>>>>>> new
   } finally {
     baselineLoading.value = false;
   }
@@ -65,11 +74,17 @@ async function importBaseline({ file }: any) {
   if (!file.file) return;
   baselineImporting.value = true;
   try {
+<<<<<<< HEAD
     const { data } = await controlObjectsApi.importBaseline(id, file.file);
     message.success(
       `Baseline загружен: ${data.tasksCount ?? data.estimateTasksCount ?? 0} задач`,
     );
     await loadBaseline();
+=======
+    const { data } = await controlObjectsApi.importBaseline(id, file.file)
+    message.success(`Baseline загружен: ${data.tasksCount ?? data.estimateTasksCount ?? 0} задач`)
+    await loadBaseline()
+>>>>>>> new
   } catch (e: any) {
     message.error(e.response?.data?.message ?? "Ошибка импорта baseline");
   } finally {
@@ -107,6 +122,7 @@ const etColumns = [
 ];
 
 // ── Jira ──────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 const epics = ref<any[]>([]);
 const tasks = ref<any[]>([]);
 const jiraLoading = ref(false);
@@ -121,6 +137,22 @@ function setStructureFile(file: any) {
 
 function setWorklogFile(file: any) {
   worklogFile.value = file?.file ?? null;
+=======
+const epics = ref<any[]>([])
+const tasks = ref<any[]>([])
+const jiraLoading = ref(false)
+const jiraImporting = ref(false)
+const structureFile = ref<File | null>(null)
+const worklogFile = ref<File | null>(null)
+const deliveryKey = ref('')
+
+function setStructureFile(file: any) {
+  structureFile.value = file?.file ?? null
+}
+
+function setWorklogFile(file: any) {
+  worklogFile.value = file?.file ?? null
+>>>>>>> new
 }
 
 async function loadJira() {
@@ -143,6 +175,7 @@ async function importJira() {
     return;
   }
   if (!deliveryKey.value.trim()) {
+<<<<<<< HEAD
     message.warning("Укажите ключ родительской задачи");
     return;
   }
@@ -156,6 +189,16 @@ async function importJira() {
     );
     message.success("Jira-выгрузка импортирована");
     await loadJira();
+=======
+    message.warning('Укажите ключ родительской задачи')
+    return
+  }
+  jiraImporting.value = true
+  try {
+    await controlObjectsApi.importJira(id, structureFile.value, worklogFile.value, deliveryKey.value.trim())
+    message.success('Jira-выгрузка импортирована')
+    await loadJira()
+>>>>>>> new
   } catch (e: any) {
     message.error(e.response?.data?.message ?? "Ошибка импорта Jira");
   } finally {
@@ -353,7 +396,14 @@ const filteredEmployees = computed(() => {
 });
 
 const empColumns = [
+<<<<<<< HEAD
   { title: "ФИО", key: "fullName", sorter: "default" as const },
+=======
+  { title: 'ФИО', key: 'fullName', sorter: 'default' as const },
+  { title: 'Jira логин', key: 'jiraIdentity', render: (r: any) => r.jiraIdentity ?? '—' },
+  { title: 'Направление', key: 'direction', render: (r: any) => h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => r.direction ?? '—' }) },
+  { title: 'Роль', key: 'role', render: (r: any) => h(NTag, { size: 'small', type: 'success', bordered: false }, { default: () => r.role ?? '—' }) },
+>>>>>>> new
   {
     title: "Jira логин",
     key: "jiraIdentity",
@@ -771,6 +821,7 @@ onMounted(async () => {
       <!-- ── Jira ── -->
       <NTabPane name="jira" tab="🔗 Jira">
         <NSpin :show="jiraLoading">
+<<<<<<< HEAD
           <NCard
             size="small"
             style="
@@ -830,6 +881,23 @@ onMounted(async () => {
                       ? "✓ " + worklogFile.name
                       : "📂 Файл трудозатрат"
                   }}
+=======
+          <NCard size="small" style="margin-bottom: 16px; background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.07);">
+            <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 12px;">Импорт Jira-выгрузки</div>
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+              <NInput v-model:value="deliveryKey" size="small" placeholder="Ключ родительской задачи, например MERVEIDEV-235"
+                style="width: 260px;" clearable />
+              <NUpload accept=".xlsx,.xls,.csv" :max="1" :show-file-list="false"
+                :custom-request="({ file }) => setStructureFile(file)">
+                <NButton size="small" :type="structureFile ? 'success' : 'default'">
+                  {{ structureFile ? '✓ ' + structureFile.name : '📂 Файл структуры' }}
+                </NButton>
+              </NUpload>
+              <NUpload accept=".xlsx,.xls,.csv" :max="1" :show-file-list="false"
+                :custom-request="({ file }) => setWorklogFile(file)">
+                <NButton size="small" :type="worklogFile ? 'success' : 'default'">
+                  {{ worklogFile ? '✓ ' + worklogFile.name : '📂 Файл трудозатрат' }}
+>>>>>>> new
                 </NButton>
               </NUpload>
               <NButton

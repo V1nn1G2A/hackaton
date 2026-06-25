@@ -3,6 +3,26 @@ export type SprintStatus = 'planned' | 'active' | 'archived'
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done' | 'blocked'
 export type TaskType = 'frontend' | 'backend' | 'qa' | 'devops' | 'analytics' | 'techwriter' | 'project' | 'other'
 export type Department = TaskType
+export type ChartType = 'line' | 'bar' | 'doughnut'
+
+export interface ChartData {
+  labels: string[]
+  datasets: {
+    label?: string
+    data: number[]
+    borderColor?: string
+    backgroundColor?: string | string[]
+  }[]
+}
+
+export interface KpiMetric {
+  id: string
+  label: string
+  value: string | number
+  unit?: string
+  trend?: number
+  trendDirection?: 'up' | 'down' | 'neutral'
+}
 
 export interface User {
   id: string

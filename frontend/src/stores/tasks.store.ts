@@ -40,12 +40,12 @@ export const useTasksStore = defineStore('tasks', () => {
     await fetchBySprint(tasks.value[0]?.sprintId ?? '')
   }
 
-  async function importExcel(sprintId: string, file: File) {
+  async function importExcel(sprintId: string, structureFile: File, worklogFile: File, parentTaskKey: string) {
     if (USE_MOCK) return
     loading.value = true
     try {
-      const { data } = await tasksApi.importExcel(sprintId, file)
-      tasks.value = data
+      const { data } = await tasksApi.importExcel(sprintId, structureFile, worklogFile, parentTaskKey)
+      if (Array.isArray(data)) tasks.value = data
     } finally {
       loading.value = false
     }

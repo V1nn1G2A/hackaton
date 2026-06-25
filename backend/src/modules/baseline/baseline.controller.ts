@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Param,
+  BadRequestException,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -26,6 +27,7 @@ export class BaselineController {
     @Param('id') controlObjectId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    if (!file) throw new BadRequestException('Нужен файл baseline в поле file');
     return this.service.import(controlObjectId, file);
   }
 

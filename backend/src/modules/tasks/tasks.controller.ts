@@ -1,9 +1,9 @@
 import {
   Controller, Get, Patch, Delete, Post,
   Param, Body, Query, UseGuards,
-  UseInterceptors, UploadedFile,
+  UseInterceptors, UploadedFiles, BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
 import { UpdateTaskDto, TaskFilterDto } from './dto/task.dto';
@@ -38,8 +38,29 @@ export class TasksController {
 
   @Post('sprints/:sprintId/tasks/import')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
-  importTasks(@Param('sprintId') sprintId: string, @UploadedFile() file: Express.Multer.File) {
-    return this.tasksService.importStub(sprintId, file);
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'structureFile', maxCount: 1 },
+      { name: 'worklogFile', maxCount: 1 },
+    ]),
+  )
+  importTasks(
+    @Param('sprintId') sprintId: string,
+    @Body('deliveryKey') deliveryKey: string,
+    @UploadedFiles()
+    files: {
+      structureFile?: Express.Multer.File[];
+      worklogFile?: Express.Multer.File[];
+    },
+  ) {
+    const structure = files?.structureFile?.[0];
+    const worklog = files?.worklogFile?.[0];
+    if (!structure || !worklog) {
+      throw new BadRequestException('Нужны оба файла: structureFile и worklogFile');
+    }
+    if (!deliveryKey?.trim()) {
+      throw new BadRequestException('Нужен ключ родительской задачи в поле deliveryKey');
+    }
+    return this.tasksService.importStub(sprintId, deliveryKey.trim(), structure, worklog);
   }
 }

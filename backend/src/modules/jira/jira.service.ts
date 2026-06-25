@@ -34,7 +34,7 @@ export class JiraService {
     structureFile: Express.Multer.File,
     worklogFile: Express.Multer.File,
   ) {
-    if (!deliveryKey) throw new BadRequestException('Не указан ключ поставки');
+    if (!deliveryKey) throw new BadRequestException('Не указан ключ родительской задачи');
     if (!structureFile || !worklogFile) {
       throw new BadRequestException('Нужны оба файла: структура и трудозатраты');
     }
