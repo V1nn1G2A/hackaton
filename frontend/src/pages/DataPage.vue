@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   NTabs, NTabPane, NButton, NDataTable, NUpload, NUploadDragger,
   NText, NSpin, NAlert, NTag, NSpace, NCard, NGrid, NGridItem,
-  useMessage, NInput, NSelect,
+  useMessage, NInput, NSelect, NModal, NForm, NFormItem, NSwitch,
 } from 'naive-ui'
 import { controlObjectsApi } from '@/api/controlObjects'
 import { employeesApi } from '@/api/employees'
@@ -177,6 +177,54 @@ async function importEmployees({ file }: any) {
   } finally { empImporting.value = false }
 }
 
+// Редактирование сотрудника
+const editModal = ref(false)
+const editTarget = ref<any>(null)
+const editForm = ref({ direction: '', role: '', active: true })
+const editSaving = ref(false)
+
+const directionOptions = [
+  { label: 'Бэкенд', value: 'backend' },
+  { label: 'Фронтенд', value: 'frontend' },
+  { label: 'Аналитика', value: 'analytics' },
+  { label: 'Тимлид', value: 'teamlead' },
+  { label: 'QA', value: 'qa' },
+  { label: 'DevOps', value: 'devops' },
+  { label: 'Дизайнер', value: 'design' },
+  { label: 'Прочее', value: 'other' },
+]
+
+const roleOptions = [
+  { label: 'Бэкенд-разработчик', value: 'backend_dev' },
+  { label: 'Фронтенд-разработчик', value: 'frontend_dev' },
+  { label: 'Аналитик', value: 'analyst' },
+  { label: 'Техписатель', value: 'techwriter' },
+  { label: 'QA', value: 'qa' },
+  { label: 'DevOps', value: 'devops' },
+  { label: 'Дизайнер', value: 'designer' },
+  { label: 'Тимлид', value: 'teamlead' },
+  { label: 'Прочее', value: 'other' },
+]
+
+function openEdit(emp: any) {
+  editTarget.value = emp
+  editForm.value = { direction: emp.direction ?? '', role: emp.role ?? '', active: emp.active ?? true }
+  editModal.value = true
+}
+
+async function saveEdit() {
+  if (!editTarget.value) return
+  editSaving.value = true
+  try {
+    await employeesApi.update(editTarget.value.id, editForm.value)
+    message.success('Сотрудник обновлён')
+    editModal.value = false
+    await loadEmployees()
+  } catch (e: any) {
+    message.error(e.response?.data?.message ?? 'Ошибка сохранения')
+  } finally { editSaving.value = false }
+}
+
 const filteredEmployees = computed(() => {
   if (!empSearch.value) return employees.value
   const s = empSearch.value.toLowerCase()
@@ -190,16 +238,19 @@ const filteredEmployees = computed(() => {
 const empColumns = [
   { title: 'ФИО', key: 'fullName', sorter: 'default' },
   { title: 'Jira логин', key: 'jiraIdentity', render: (r: any) => r.jiraIdentity ?? '—' },
-  { title: 'Email', key: 'mail', render: (r: any) => r.mail ?? '—' },
   { title: 'Направление', key: 'direction', render: (r: any) => h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => r.direction ?? '—' }) },
   { title: 'Роль', key: 'role', render: (r: any) => h(NTag, { size: 'small', type: 'success', bordered: false }, { default: () => r.role ?? '—' }) },
   {
-    title: 'Статус', key: 'active', width: 100,
-    render: (r: any) => h(NTag, { size: 'small', type: r.active ? 'success' : 'default', bordered: false }, { default: () => r.active ? 'Активен' : 'Неактивен' }),
+    title: 'Статус', key: 'active', width: 90,
+    render: (r: any) => h(NTag, { size: 'small', type: r.active ? 'success' : 'default', bordered: false }, { default: () => r.active ? 'Активен' : 'Неакт.' }),
   },
   {
-    title: 'Проверка', key: 'needsReview', width: 100,
-    render: (r: any) => r.needsReview ? h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => '⚠ Проверить' }) : null,
+    title: 'Проверка', key: 'needsReview', width: 90,
+    render: (r: any) => r.needsReview ? h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => '⚠' }) : null,
+  },
+  {
+    title: '', key: 'actions', width: 80,
+    render: (r: any) => h(NButton, { size: 'tiny', onClick: () => openEdit(r) }, { default: () => 'Изменить' }),
   },
 ]
 
@@ -584,5 +635,25 @@ onMounted(async () => {
       </NTabPane>
 
     </NTabs>
+
+    <!-- Edit Employee Modal -->
+    <NModal v-model:show="editModal" preset="card" title="Редактировать сотрудника" style="max-width: 420px;">
+      <NForm v-if="editTarget" label-placement="top">
+        <div style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">{{ editTarget.fullName }}</div>
+        <NFormItem label="Направление">
+          <NSelect v-model:value="editForm.direction" :options="directionOptions" />
+        </NFormItem>
+        <NFormItem label="Роль">
+          <NSelect v-model:value="editForm.role" :options="roleOptions" />
+        </NFormItem>
+        <NFormItem label="Активен">
+          <NSwitch v-model:value="editForm.active" />
+        </NFormItem>
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+          <NButton size="small" @click="editModal = false">Отмена</NButton>
+          <NButton size="small" type="primary" :loading="editSaving" @click="saveEdit">Сохранить</NButton>
+        </div>
+      </NForm>
+    </NModal>
   </div>
 </template>
