@@ -6,6 +6,7 @@ import {
   NGrid, NGridItem, NAlert, NProgress, useMessage, NTooltip,
 } from 'naive-ui'
 import { controlObjectsApi } from '@/api/controlObjects'
+import Gauge from '@/components/Gauge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +19,8 @@ const comparison = ref<any>(null)
 const risks = ref<any>(null)
 const dataQuality = ref<any>(null)
 const aiAnalysis = ref<any>(null)
+const epics = ref<any[]>([])
+const tasks = ref<any[]>([])
 
 const loading = ref(true)
 const aiLoading = ref(false)
@@ -63,27 +66,86 @@ function fmtPct(n: number | null | undefined) {
   return n.toFixed(1) + '%'
 }
 
+// Direction colors (как в sprinttraker)
+const DIRECTION_COLORS: Record<string, string> = {
+  backend:   '#34d399',
+  frontend:  '#60a5fa',
+  analytics: '#a78bfa',
+  qa:        '#f472b6',
+  devops:    '#fbbf24',
+  teamlead:  '#fb923c',
+  design:    '#818cf8',
+  other:     '#94a3b8',
+}
+
+function dirColor(direction: string): string {
+  return DIRECTION_COLORS[direction?.toLowerCase()] ?? '#94a3b8'
+}
+
 // ─── data ─────────────────────────────────────────────────────────────────────
 
 const hasData = computed(() => dashboard.value && (dashboard.value.baselineHours > 0 || dashboard.value.epicCount > 0))
 const overallRisk = computed(() => dashboard.value?.overallRisk ?? 'grey')
 const baselinePct = computed(() => Math.min(dashboard.value?.usagePercent ?? 0, 100))
 
+// Burning epics (просроченные)
+const burningEpics = computed(() => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return epics.value.filter(e => {
+    if (!e.dueDate) return false
+    const d = new Date(e.dueDate)
+    return !isNaN(d.getTime()) && d < today && e.status !== 'Done' && e.status !== 'Closed'
+  })
+})
+
+// Team performance from Jira tasks
+const teamPerformance = computed(() => {
+  const map = new Map<string, { name: string; tasksDone: number; tasksTotal: number; hoursDone: number; hoursTotal: number }>()
+  for (const t of tasks.value) {
+    const key = t.assigneeRaw ?? 'Не назначен'
+    if (!map.has(key)) map.set(key, { name: key, tasksDone: 0, tasksTotal: 0, hoursDone: 0, hoursTotal: 0 })
+    const row = map.get(key)!
+    row.tasksTotal++
+    row.hoursTotal += t.currentEstimateHours ?? 0
+    if (t.status === 'Done' || t.status === 'Closed') {
+      row.tasksDone++
+      row.hoursDone += t.actualHours ?? 0
+    }
+  }
+  return [...map.values()]
+    .filter(r => r.tasksTotal > 0)
+    .sort((a, b) => b.tasksDone - a.tasksDone || b.hoursDone - a.hoursDone)
+    .slice(0, 12)
+})
+
+// Direction gauges
+const directionGauges = computed(() => {
+  return (comparison.value?.byDirection ?? []).map((d: any) => ({
+    ...d,
+    pct: Math.min(d.usagePercent ?? 0, 100),
+  }))
+})
+
 async function loadAll() {
   loading.value = true
   try {
-    const [objRes, dashRes, cmpRes, riskRes, dqRes] = await Promise.allSettled([
+    const [objRes, dashRes, cmpRes, riskRes, dqRes, epicsRes, tasksRes] = await Promise.allSettled([
       controlObjectsApi.getById(id),
       controlObjectsApi.getDashboard(id),
       controlObjectsApi.getComparison(id),
       controlObjectsApi.getRisks(id),
       controlObjectsApi.getDataQuality(id),
+      controlObjectsApi.getEpics(id),
+      controlObjectsApi.getTasks(id),
     ])
     if (objRes.status === 'fulfilled') obj.value = objRes.value.data
     if (dashRes.status === 'fulfilled') dashboard.value = dashRes.value.data
     if (cmpRes.status === 'fulfilled') comparison.value = cmpRes.value.data
     if (riskRes.status === 'fulfilled') risks.value = riskRes.value.data
     if (dqRes.status === 'fulfilled') dataQuality.value = dqRes.value.data
+    if (epicsRes.status === 'fulfilled') epics.value = epicsRes.value.data
+    if (tasksRes.status === 'fulfilled') tasks.value = tasksRes.value.data
   } finally {
     loading.value = false
   }
@@ -282,6 +344,105 @@ const dqCount = computed(() => {
               </div>
             </div>
 
+            <!-- ── GAUGES ── -->
+            <NCard size="small" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.07);">
+              <div style="display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;">
+
+                <!-- Overall gauge -->
+                <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 20px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); min-width: 160px;">
+                  <Gauge
+                    :percentage="dashboard?.usagePercent ?? 0"
+                    :size="160"
+                    label="Использование Baseline"
+                    :sublabel="`${fmt(dashboard?.actualHours)} / ${fmt(dashboard?.baselineHours)} ч`"
+                  />
+                  <div style="margin-top: 10px; display: flex; gap: 8px; width: 100%;">
+                    <div style="flex: 1; text-align: center; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 6px 4px;">
+                      <div style="font-size: 13px; font-weight: 600; color: #e2e8f0;">{{ fmt(dashboard?.actualHours) }}ч</div>
+                      <div style="font-size: 10px; color: #64748b;">факт</div>
+                    </div>
+                    <div style="flex: 1; text-align: center; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 6px 4px;">
+                      <div style="font-size: 13px; font-weight: 600; color: #60a5fa;">{{ fmt(dashboard?.baselineHours) }}ч</div>
+                      <div style="font-size: 10px; color: #64748b;">план</div>
+                    </div>
+                    <div style="flex: 1; text-align: center; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 6px 4px;">
+                      <div style="font-size: 13px; font-weight: 600;" :style="{ color: (dashboard?.deviation ?? 0) > 0 ? '#ef4444' : '#22c55e' }">
+                        {{ dashboard?.deviation != null ? (dashboard.deviation > 0 ? '+' : '') + fmt(dashboard.deviation) : '—' }}ч
+                      </div>
+                      <div style="font-size: 10px; color: #64748b;">откл.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Per-direction gauges -->
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 12px; color: #64748b; margin-bottom: 10px; font-weight: 500;">
+                    Использование по направлениям
+                    <span style="font-weight: 400; font-size: 11px; margin-left: 4px; color: #475569;">— нажмите для детализации</span>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                    <button
+                      v-for="d in directionGauges"
+                      :key="d.direction"
+                      style="display: flex; flex-direction: column; align-items: center; padding: 10px 14px; border-radius: 12px; border: 1px solid transparent; background: rgba(255,255,255,0.02); cursor: pointer; transition: all 0.15s; outline: none;"
+                      @mouseenter="($event.currentTarget as HTMLElement).style.borderColor = dirColor(d.direction) + '66'"
+                      @mouseleave="($event.currentTarget as HTMLElement).style.borderColor = 'transparent'"
+                      @click="router.push(`/control-objects/${id}/comparison?direction=${d.direction}`)"
+                    >
+                      <Gauge
+                        :percentage="d.pct"
+                        :size="110"
+                        :color="dirColor(d.direction)"
+                        :label="d.direction"
+                        :sublabel="`${fmt(d.actualHours)} / ${fmt(d.baselineHours)} ч`"
+                      />
+                      <NTag
+                        v-if="d.risk === 'red' || d.risk === 'yellow'"
+                        :type="riskType(d.risk)"
+                        size="small"
+                        :bordered="false"
+                        style="margin-top: 4px;"
+                      >
+                        {{ d.risk === 'red' ? '🔴 риск' : '🟡 внимание' }}
+                      </NTag>
+                    </button>
+                  </div>
+                  <div v-if="!directionGauges.length" style="font-size: 13px; color: #475569; padding: 20px 0;">
+                    Загрузите Baseline и Jira — появятся спидометры по направлениям
+                  </div>
+                </div>
+
+              </div>
+            </NCard>
+
+            <!-- ── Burning epics (просроченные) ── -->
+            <div v-if="burningEpics.length"
+              style="border-radius: 10px; border: 1px solid rgba(239,68,68,0.35); background: rgba(239,68,68,0.05); padding: 14px 16px;">
+              <div style="font-size: 13px; font-weight: 600; color: #f87171; margin-bottom: 10px;">
+                🔥 Просроченные эпики ({{ burningEpics.length }})
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <div
+                  v-for="e in burningEpics.slice(0, 20)"
+                  :key="e.id"
+                  style="border-radius: 8px; border: 1px solid rgba(239,68,68,0.3); background: rgba(15,20,30,0.6); padding: 8px 12px; font-size: 12px;"
+                >
+                  <div style="font-weight: 500; color: #e2e8f0; margin-bottom: 2px;">{{ e.jiraKey }} · {{ e.title }}</div>
+                  <div style="color: #ef4444;">
+                    срок: {{ new Date(e.dueDate).toLocaleDateString('ru') }}
+                    · {{ Math.ceil((Date.now() - new Date(e.dueDate).getTime()) / 86400000) }} дн. просрочен
+                  </div>
+                </div>
+              </div>
+              <NButton
+                v-if="burningEpics.length > 20"
+                text size="small" style="margin-top: 8px; color: #4f7cff;"
+                @click="router.push(`/control-objects/${id}/deadlines`)"
+              >
+                Показать все →
+              </NButton>
+            </div>
+
             <!-- Baseline Usage Chart -->
             <NCard size="small" title="Использование Baseline"
               style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.07);">
@@ -306,6 +467,31 @@ const dqCount = computed(() => {
                   <span>0%</span>
                   <span>Отклонение: {{ dashboard?.deviation != null ? (dashboard.deviation > 0 ? '+' : '') + fmt(dashboard.deviation) + ' ч' : '—' }}</span>
                   <span>100%</span>
+                </div>
+              </div>
+            </NCard>
+
+            <!-- ── Team Performance ── -->
+            <NCard v-if="teamPerformance.length" size="small" title="Производительность команды"
+              style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.07);">
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                <div
+                  v-for="row in teamPerformance"
+                  :key="row.name"
+                  style="display: flex; align-items: center; justify-content: space-between; border-radius: 8px; background: rgba(255,255,255,0.02); padding: 10px 12px; border: 1px solid rgba(255,255,255,0.04);"
+                >
+                  <div style="min-width: 0;">
+                    <div style="font-size: 13px; font-weight: 500; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">
+                      {{ row.name }}
+                    </div>
+                    <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                      задач: {{ row.tasksDone }} / {{ row.tasksTotal }}
+                    </div>
+                  </div>
+                  <div style="text-align: right; flex-shrink: 0; margin-left: 8px;">
+                    <div style="font-size: 15px; font-weight: 600; color: #34d399;">{{ row.hoursDone }}ч</div>
+                    <div style="font-size: 10px; color: #475569;">из {{ row.hoursTotal }}ч</div>
+                  </div>
                 </div>
               </div>
             </NCard>
@@ -376,8 +562,6 @@ const dqCount = computed(() => {
 
             <!-- Deadlines + Review row -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-
-              <!-- Deadlines -->
               <NCard size="small" title="Контроль сроков"
                 style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.07);">
                 <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: #94a3b8; margin-bottom: 12px;">
@@ -400,7 +584,6 @@ const dqCount = computed(() => {
                 </NButton>
               </NCard>
 
-              <!-- Needs Review -->
               <NCard size="small" title="Требует проверки"
                 style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.07); cursor: pointer;"
                 @click="router.push(`/control-objects/${id}/data?tab=review`)">
@@ -436,20 +619,16 @@ const dqCount = computed(() => {
               </div>
 
               <NSpin :show="aiLoading">
-                <!-- No analysis yet -->
                 <div v-if="!aiLoading && !aiAnalysis"
                   style="text-align: center; padding: 20px 0; color: #64748b; font-size: 13px;">
                   Анализ ещё не сформирован
                 </div>
 
-                <!-- Analysis content -->
                 <div v-else-if="aiAnalysis">
-                  <!-- State -->
                   <div style="font-size: 12px; color: #94a3b8; line-height: 1.6; margin-bottom: 14px; white-space: pre-wrap;">
                     {{ aiAnalysis.state }}
                   </div>
 
-                  <!-- Top risks -->
                   <div v-if="aiAnalysis.mainRisks?.length" style="margin-bottom: 14px;">
                     <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;">
                       Основные риски
@@ -462,7 +641,6 @@ const dqCount = computed(() => {
                     </div>
                   </div>
 
-                  <!-- Questions -->
                   <div v-if="aiAnalysis.questions?.length" style="margin-bottom: 14px;">
                     <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;">
                       Вопросы команде
@@ -473,7 +651,6 @@ const dqCount = computed(() => {
                     </div>
                   </div>
 
-                  <!-- Recommendations -->
                   <div v-if="aiAnalysis.recommendations?.length" style="margin-bottom: 14px;">
                     <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;">
                       Рекомендации
@@ -484,7 +661,6 @@ const dqCount = computed(() => {
                     </div>
                   </div>
 
-                  <!-- Generated at -->
                   <div style="font-size: 10px; color: #475569; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; margin-top: 4px;">
                     {{ aiAnalysis.generatedAt ? new Date(aiAnalysis.generatedAt).toLocaleString('ru') : '' }}
                   </div>
