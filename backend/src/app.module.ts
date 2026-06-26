@@ -16,6 +16,7 @@ import { EmployeesModule } from './modules/employees/employees.module';
 import { JiraModule } from './modules/jira/jira.module';
 import { LinksModule } from './modules/links/links.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { VeiModule } from './modules/vei/vei.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     JiraModule,
     LinksModule,
     AnalyticsModule,
+    VeiModule,
   ],
 })
 export class AppModule {}
